@@ -1,6 +1,7 @@
 #include "D3DApp.h"
 
 #include<fstream>
+#include <windowsx.h>
 
 #if defined(CreateWindow)
 #undef CreateWindow
@@ -156,25 +157,6 @@ void D3DApp::CreateSwapChain()
     ThrowIfFailed(mDXGIFactory4->MakeWindowAssociation(mhMainWnd, DXGI_MWA_NO_ALT_ENTER));
 }
 
-void D3DApp::FlushCommandQueue()
-{
-    mFenceValue++;
-    ThrowIfFailed(mCommandQueue->Signal(mFence.Get(), mFenceValue));
-
-    if (mFence->GetCompletedValue() < mFenceValue)
-    {
-        mFenceEvent = CreateEventEx(nullptr, FALSE, FALSE, EVENT_ALL_ACCESS);
-        mFence->SetEventOnCompletion(mFenceValue, mFenceEvent);
-        if (mFenceEvent)
-        {
-            WaitForSingleObject(mFenceEvent, INFINITE);
-            CloseHandle(mFenceEvent);
-        }
-        
-    }
-    mCurrentBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
-}
-
 int D3DApp::Run()
 {
     ::ShowWindow(mhMainWnd, SW_MAXIMIZE);
@@ -206,8 +188,22 @@ bool D3DApp::Initialize(WNDPROC proc)
 
 LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+
     switch (msg)
     {
+    case WM_LBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+        OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        return 0;
+    case WM_LBUTTONUP:
+    case WM_MBUTTONUP:
+    case WM_RBUTTONUP:
+        OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        return 0;
+    case WM_MOUSEMOVE:
+        OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        return 0;
     case WM_KEYDOWN:
     {
         switch (wParam)
@@ -216,6 +212,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             ::PostQuitMessage(0);
             break;
         }
+        break;
     }
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -323,6 +320,30 @@ ComPtr<ID3D12Resource> D3DApp::CreateDefaultBuffer(const void* initData, UINT64 
 float D3DApp::AspectRatio() const
 {
     return static_cast<float>(mClientWidth) / mClientHeight;
+}
+
+void D3DApp::FlushCommandQueue()
+{
+    // Advance the fence value to mark commands up to this fence point.
+    mFenceValue++;
+
+    // Add an instruction to the command queue to set a new fence point.  Because we 
+    // are on the GPU timeline, the new fence point won't be set until the GPU finishes
+    // processing all the commands prior to this Signal().
+    ThrowIfFailed(mCommandQueue->Signal(mFence.Get(), mFenceValue));
+
+    // Wait until the GPU has completed commands up to this fence point.
+    if (mFence->GetCompletedValue() < mFenceValue)
+    {
+        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, false, EVENT_ALL_ACCESS);
+
+        // Fire event when GPU hits current fence.  
+        ThrowIfFailed(mFence->SetEventOnCompletion(mFenceValue, eventHandle));
+
+        // Wait until the GPU hits current fence event is fired.
+        WaitForSingleObject(eventHandle, INFINITE);
+        CloseHandle(eventHandle);
+    }
 }
 
 ComPtr<ID3DBlob> D3DApp::LoadBinary(const std::string& filename)

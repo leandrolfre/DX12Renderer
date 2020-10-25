@@ -13,6 +13,15 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{4dc4e3a8-979c-4988-9e2a-8371c83c9c0d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Textures">
+      <UniqueIdentifier>{2fc5e289-6ad1-4f6f-94af-d1c3688f4783}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="imgui">
+      <UniqueIdentifier>{eb757e90-a1a7-4c50-85e0-7596aefac6f0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -23,6 +32,45 @@
     </ClCompile>
     <ClCompile Include="..\Common\D3DApp.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\MathHelper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FrameResource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RenderItem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GeometryGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\DDSTextureLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="BlurFilter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_demo.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_draw.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_impl_dx12.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_impl_win32.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_widgets.cpp">
+      <Filter>imgui</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -35,5 +83,163 @@
     <ClInclude Include="..\Common\d3dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\Common\MathHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FrameResource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderItem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GeometryGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\DDSTextureLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BlurFilter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Camera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imconfig.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imgui.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imgui_impl_dx12.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imgui_impl_win32.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imgui_internal.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imstb_rectpack.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imstb_textedit.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imstb_truetype.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Texture\bricks.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\bricks_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\bricks2.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\bricks2_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\bricks3.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\checkboard.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\default_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\desertcube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\grass.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\grasscube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\head_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\head_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\ice.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\jacket_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\jacket_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\pants_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\pants_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\snowcube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\stone.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\sunsetcube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tile.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tile_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tree0.bmp">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tree01S.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tree1.bmp">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tree02S.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tree2.bmp">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\tree35S.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\treearray.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\treeArray2.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\upBody_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\upbody_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\water1.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\white1x1.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\WireFence.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\WoodCrate01.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="Texture\WoodCrate02.dds">
+      <Filter>Textures</Filter>
+    </Image>
   </ItemGroup>
 </Project>

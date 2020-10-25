@@ -96,7 +96,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <FxCompile>
-      <ShaderModel>5.0</ShaderModel>
+      <ShaderModel>5.1</ShaderModel>
     </FxCompile>
     <PreBuildEvent>
       <Command>call shaderCompile</Command>
@@ -149,14 +149,79 @@
   <ItemGroup>
     <ClCompile Include="..\Common\D3DApp.cpp" />
     <ClCompile Include="..\Common\MathHelper.cpp" />
+    <ClCompile Include="..\Common\DDSTextureLoader.cpp" />
+    <ClCompile Include="BlurFilter.cpp" />
+    <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="FrameResource.cpp" />
+    <ClCompile Include="GeometryGenerator.cpp" />
     <ClCompile Include="HelloWorldApp.cpp" />
+    <ClCompile Include="ImGui\imgui.cpp" />
+    <ClCompile Include="ImGui\imgui_demo.cpp" />
+    <ClCompile Include="ImGui\imgui_draw.cpp" />
+    <ClCompile Include="ImGui\imgui_impl_dx12.cpp" />
+    <ClCompile Include="ImGui\imgui_impl_win32.cpp" />
+    <ClCompile Include="ImGui\imgui_widgets.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="RenderItem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Common\D3DApp.h" />
     <ClInclude Include="..\Common\d3dx12.h" />
     <ClInclude Include="..\Common\MathHelper.h" />
+    <ClInclude Include="..\Common\DDSTextureLoader.h" />
+    <ClInclude Include="BlurFilter.h" />
+    <ClInclude Include="Camera.h" />
+    <ClInclude Include="FrameResource.h" />
+    <ClInclude Include="GeometryGenerator.h" />
     <ClInclude Include="HelloWorldApp.h" />
+    <ClInclude Include="ImGui\imconfig.h" />
+    <ClInclude Include="ImGui\imgui.h" />
+    <ClInclude Include="ImGui\imgui_impl_dx12.h" />
+    <ClInclude Include="ImGui\imgui_impl_win32.h" />
+    <ClInclude Include="ImGui\imgui_internal.h" />
+    <ClInclude Include="ImGui\imstb_rectpack.h" />
+    <ClInclude Include="ImGui\imstb_textedit.h" />
+    <ClInclude Include="ImGui\imstb_truetype.h" />
+    <ClInclude Include="RenderItem.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Texture\bricks.dds" />
+    <Image Include="Texture\bricks2.dds" />
+    <Image Include="Texture\bricks2_nmap.dds" />
+    <Image Include="Texture\bricks3.dds" />
+    <Image Include="Texture\bricks_nmap.dds" />
+    <Image Include="Texture\checkboard.dds" />
+    <Image Include="Texture\default_nmap.dds" />
+    <Image Include="Texture\desertcube1024.dds" />
+    <Image Include="Texture\grass.dds" />
+    <Image Include="Texture\grasscube1024.dds" />
+    <Image Include="Texture\head_diff.dds" />
+    <Image Include="Texture\head_norm.dds" />
+    <Image Include="Texture\ice.dds" />
+    <Image Include="Texture\jacket_diff.dds" />
+    <Image Include="Texture\jacket_norm.dds" />
+    <Image Include="Texture\pants_diff.dds" />
+    <Image Include="Texture\pants_norm.dds" />
+    <Image Include="Texture\snowcube1024.dds" />
+    <Image Include="Texture\stone.dds" />
+    <Image Include="Texture\sunsetcube1024.dds" />
+    <Image Include="Texture\tile.dds" />
+    <Image Include="Texture\tile_nmap.dds" />
+    <Image Include="Texture\tree0.bmp" />
+    <Image Include="Texture\tree01S.dds" />
+    <Image Include="Texture\tree02S.dds" />
+    <Image Include="Texture\tree1.bmp" />
+    <Image Include="Texture\tree2.bmp" />
+    <Image Include="Texture\tree35S.dds" />
+    <Image Include="Texture\treearray.dds" />
+    <Image Include="Texture\treeArray2.dds" />
+    <Image Include="Texture\upBody_diff.dds" />
+    <Image Include="Texture\upbody_norm.dds" />
+    <Image Include="Texture\water1.dds" />
+    <Image Include="Texture\white1x1.dds" />
+    <Image Include="Texture\WireFence.dds" />
+    <Image Include="Texture\WoodCrate01.dds" />
+    <Image Include="Texture\WoodCrate02.dds" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
