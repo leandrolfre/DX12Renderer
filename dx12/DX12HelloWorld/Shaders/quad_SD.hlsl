@@ -15,11 +15,6 @@ struct VertexOut
 	float2 TexCoord : TEXCOORD;
 };
 
-cbuffer cbSettings : register(b0)
-{
-	float test;
-}
-
 Texture2D gScreenMap : register(t0);
 SamplerState gLinearSample : register(s0);
 
@@ -37,5 +32,4 @@ float4 PS(VertexOut pin) : SV_Target
 {
 	float4 diffuse = gScreenMap.Sample(gLinearSample, pin.TexCoord);
 	return diffuse;
-	//return float4(test, 0.0f, 0.0f, 1.0f);
 }

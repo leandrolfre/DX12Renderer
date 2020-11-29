@@ -288,32 +288,12 @@ void D3DAppHelloWorld::BuildPSO()
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC screenPsoDesc = psoDesc;
     screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
-    screenPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-    screenPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    screenPsoDesc.RasterizerState.DepthClipEnable = false;
+    screenPsoDesc.RasterizerState.DepthClipEnable = false;
     screenPsoDesc.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
     screenPsoDesc.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
 
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC descPipelineState;
-    ZeroMemory(&descPipelineState, sizeof(descPipelineState));
-    
-    descPipelineState.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
-    descPipelineState.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
-    descPipelineState.InputLayout = { mInputLayout.data(), static_cast<UINT>(mInputLayout.size()) };
-    descPipelineState.pRootSignature = mScreenRootSignature.Get();
-    descPipelineState.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-    descPipelineState.DepthStencilState.DepthEnable = false;
-    descPipelineState.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    descPipelineState.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    descPipelineState.RasterizerState.DepthClipEnable = false;
-    descPipelineState.SampleMask = UINT_MAX;
-    descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    descPipelineState.NumRenderTargets = 1;
-    //descPipelineState.RTVFormats[0] = mRtvFormat[0];
-    descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-    descPipelineState.SampleDesc.Count = 1;
-
-    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["screen"])));
+    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&screenPsoDesc, IID_PPV_ARGS(&mPSOs["screen"])));
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC horizontalBlurDesc;
     ZeroMemory(&horizontalBlurDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
@@ -713,11 +693,7 @@ void D3DAppHelloWorld::Render()
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
     }
-    
-    
-        
     ///////////////////////////
-
 
     D3D12_VIEWPORT screenViewport = { 0.0f, 0.0f, static_cast<FLOAT>(mClientWidth), static_cast<FLOAT>(mClientHeight), 0.0f, 1.0f };
     mCommandList->RSSetViewports(1, &screenViewport);
@@ -729,10 +705,14 @@ void D3DAppHelloWorld::Render()
     auto renderTargetView = mRTHandles[mCurrentBufferIndex];
     auto depthStencilView = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->ScreenMap.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
-
+    // Transition the resource from its initial state to be used as a depth buffer.
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
+                                                                           D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
     float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     
+    mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
     mCommandList->ClearRenderTargetView(mCurrentFrameResource->ScreenCpuRtv, clearColor, 0, nullptr);
     mCommandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
@@ -763,19 +743,24 @@ void D3DAppHelloWorld::Render()
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
 
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->ScreenMap.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
-    
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
-
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
+                                                                            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON));
     mCommandList->OMSetRenderTargets(1, &renderTargetView, true, nullptr);
     mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
     mCommandList->SetGraphicsRootSignature(mScreenRootSignature.Get());
     mCommandList->SetPipelineState(mPSOs["screen"].Get());
     mCommandList->SetGraphicsRootDescriptorTable(0, mCurrentFrameResource->ScreenGpuSrv);
-    float test = 0.2f;
-    mCommandList->SetGraphicsRoot32BitConstants(1, 1, &test, 0);
-    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::PostProcessing]);
 
+    //////////////////////////////////////////////////////////////////////////////////////////
+     //TODO:Encapsulate this. Each object should know how to bind and draw itself   
+     auto ri = mLayerRItems[(int)RenderLayer::PostProcessing][0];
+     mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+     mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+     mCommandList->IASetPrimitiveTopology(ri->PrimitiveType);
+
+     mCommandList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+    
+    /////////////////////////////////////////////////////////////////////////////////////////
     if (mIsBlurEnabled)
     {
         mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
@@ -790,10 +775,9 @@ void D3DAppHelloWorld::Render()
         mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
     }
 
+    //TODO: These calls cannot be here. Improve That!!!! *See logs
     ImGui::Render();
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
-
-    
 
     ThrowIfFailed(mCommandList->Close());
 

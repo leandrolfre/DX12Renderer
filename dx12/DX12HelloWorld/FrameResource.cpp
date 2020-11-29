@@ -27,7 +27,7 @@ FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCo
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &texDesc,
-        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&ScreenMap)
     ));

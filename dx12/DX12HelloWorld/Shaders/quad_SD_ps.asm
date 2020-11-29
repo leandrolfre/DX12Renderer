@@ -38,10 +38,10 @@ dcl_temps 1
 //   v1.x <- pin.TexCoord.x; v1.y <- pin.TexCoord.y; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
-#line 38 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\quad_SD.hlsl"
+#line 33 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\quad_SD.hlsl"
 sample r0.xyzw, v1.xyxx, T0[0].xyzw, S0[0]  // r0.x <- diffuse.x; r0.y <- diffuse.y; r0.z <- diffuse.z; r0.w <- diffuse.w
 
-#line 39
+#line 34
 mov o0.xyzw, r0.xyzw
 ret 
 // Approximately 3 instruction slots used
