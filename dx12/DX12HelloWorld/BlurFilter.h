@@ -5,11 +5,13 @@
 #include "../Common/d3dx12.h"
 #include <vector>
 
+class ShaderResourceBuffer;
+
 class BlurFilter
 {
 public:
     BlurFilter(ID3D12Device* device, UINT width, UINT height, DXGI_FORMAT format);
-    void BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle, UINT descriptorSize);
+    void BuildDescriptors(ShaderResourceBuffer* srBuffer);
     void Execute(ID3D12GraphicsCommandList* cmdList, ID3D12RootSignature* rootSig, ID3D12PipelineState* horzBlurPSO, ID3D12PipelineState* vertBlurPSO, ID3D12Resource* input, int blurCount);
 
 private:

@@ -11,10 +11,10 @@
 
 struct Texture
 {
-	std::string Name;
-	std::wstring FileName;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE handle;
 	Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
 	Microsoft::WRL::ComPtr<ID3D12Resource> UploadHeap;
+	UINT ID = 0;
 };
 
 struct Material
@@ -23,9 +23,12 @@ struct Material
 	UINT MatCBIndex = 0;
 	UINT DiffuseSrvHeapIndex = 0;
 	int NumFramesDirty;
+	int hasNormalMap = 0;
+	float Roughness = 0.25f;
+	float pad1;
 	DirectX::XMFLOAT4 DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
 	DirectX::XMFLOAT3 FresnelR0 = { 0.01f, 0.01f, 0.01f };
-	float Roughness = 0.25f;
+	float pad2;
 };
 
 struct Light
@@ -75,7 +78,7 @@ struct MaterialConstants
 	UINT DiffuseMapIndex;
 	UINT MaterialPad0;
 	UINT MaterialPad1;
-	UINT MaterialPad2;
+	int hasNormalMap;
 };
 
 template<class T>
@@ -123,10 +126,28 @@ private:
 	bool mIsConstantBuffer;
 };
 
+class ShaderResourceBuffer
+{
+public:
+	ShaderResourceBuffer(ID3D12Device* device, UINT numDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flag);
+	ShaderResourceBuffer(const ShaderResourceBuffer& rhs) = delete;
+	void operator=(const ShaderResourceBuffer& rhs) = delete;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE CpuHandle();
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GpuHandle();
+	ID3D12DescriptorHeap* DescriptorHeap();
+	UINT DescriptorHeapSize();
+
+private:
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap;
+	UINT mCbvSrvUavDescriptorSize;
+	UINT curSrvCPUHandleIndex = 0;
+	UINT curSrvGPUHandleIndex = 0;
+};
+
 class FrameResource
 {
 public:
-	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount);
+	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount, UINT64 rtWidth, UINT64 rtHeight, DXGI_FORMAT rtFormat, ShaderResourceBuffer* srb, ShaderResourceBuffer* rtb);
 	FrameResource(const FrameResource& rhs) = delete;
 	FrameResource& operator=(const FrameResource& rhs) = delete;
 	~FrameResource()
@@ -137,5 +158,9 @@ public:
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB;
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB;
 	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB;
+	Microsoft::WRL::ComPtr<ID3D12Resource> ScreenMap;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE ScreenCpuSrv;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE ScreenCpuRtv;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE ScreenGpuSrv;
 	UINT64 Fence;
 };

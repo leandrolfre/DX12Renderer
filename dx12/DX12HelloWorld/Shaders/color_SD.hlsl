@@ -29,6 +29,8 @@ struct VertexOut
 	float3 PosW : POSITION;
     float3 NormalW : NORMAL;
 	float2 TexCoord : TEXCOORD;
+	float3 TangentW : TANGENT;
+	float3 BitangentW: Binormal;
 };
 
 VertexOut VS(VertexIn vin, float4 Color : COLOR)
@@ -42,6 +44,8 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
 	vout.PosH = mul(gViewProj, posW);
 	
 	vout.NormalW = mul((float3x3)gWorld, vin.Normal);
+	vout.TangentW = mul((float3x3)gWorld, vin.Tangent);
+	vout.BitangentW = cross(vout.NormalW, vout.TangentW);
 	vout.TexCoord = vin.Tex0;
     return vout;
 }
@@ -51,8 +55,22 @@ float4 PS(VertexOut pin) : SV_Target
 	MaterialData matData = gMaterialData[gMaterialIndex];
 
     pin.NormalW = normalize(pin.NormalW);
+
+	if (matData.hasNormalMap)
+	{
+		float3 N = pin.NormalW;
+		float3 T = normalize(pin.TangentW - dot(pin.TangentW, N) * N);
+		float3 B = normalize(pin.BitangentW - dot(pin.BitangentW, N) * N);
+		
+		float3x3 TBN = { T, B, N };
+		float4 normalMap = gMaterialMap[matData.DiffuseMapIndex + 1].Sample(gLinearSample, pin.TexCoord);
+		normalMap = normalMap * 2.0f - 1.0f;
+		pin.NormalW = mul(normalMap.xyz, TBN);
+	}
+
+
 	float3 viewDir = normalize(gEyePosW - pin.PosW);
-	float4 diffuse = gDiffuseMap[matData.DiffuseMapIndex].Sample(gLinearSample, pin.TexCoord);
+	float4 diffuse = gMaterialMap[matData.DiffuseMapIndex].Sample(gLinearSample, pin.TexCoord);
 	float4 ambient = gAmbientLight * diffuse;
 	const float shininess = 1.0f - matData.Roughness;
 	Material mat = { diffuse, matData.FresnelR0, shininess};
@@ -60,7 +78,7 @@ float4 PS(VertexOut pin) : SV_Target
 	float3 shadowFactor = 1.0f;
 	
 	float4 directLight = ComputeLighting(gLights, mat, pin.PosW, pin.NormalW, viewDir, shadowFactor);
-	float4 litColor = (ambient + directLight);
+	float4 litColor = directLight;//(ambient + directLight);
 	
 	litColor.a = matData.DiffuseAlbedo.a;
 	

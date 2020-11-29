@@ -27,12 +27,7 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
     BuildMaterials();
     BuildRenderItems();
     BuildFrameResources();
-   // BuildConstantBuffers();
     BuildPSO();
-
-    //// Transition the resource from its initial state to be used as a depth buffer.
-    //mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-    //                                                                       D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 
     // Setup Dear ImGui
     IMGUI_CHECKVERSION();
@@ -60,27 +55,9 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
 
 void D3DAppHelloWorld::BuildDescriptorHeaps()
 {
-    /*auto objCount = mOpaqueRItems.size();
-    UINT descriptorCount = (objCount + 1) * gNumFrameResources;
-    mPassCbvOffset = objCount * gNumFrameResources;
+    mSRBuffer = std::make_unique<ShaderResourceBuffer>(mDevice.Get(), 100, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
-    heapDesc.NumDescriptors = descriptorCount;
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    heapDesc.NodeMask = 0;
-
-    ThrowIfFailed(mDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mCbvHeap)));*/
-
-    D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc;
-    srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    srvHeapDesc.NumDescriptors = 7;
-    srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    srvHeapDesc.NodeMask = 0;
-    ThrowIfFailed(mDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
-
-    mBlurFilter->BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart()), 
-                                  CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart()), mCbvSrvUavDescriptorSize);
+    mBlurFilter->BuildDescriptors(mSRBuffer.get());
 
     D3D12_DESCRIPTOR_HEAP_DESC descUI = {};
     descUI.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -100,7 +77,7 @@ void D3DAppHelloWorld::BuildConstantBuffers()
     {
         auto passCB = mFrameResources[frameIdx]->PassCB->Resource();
         auto passCBAddress = passCB->GetGPUVirtualAddress();
-        auto passHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(handleHeapStart, mPassCbvOffset + frameIdx, mCbvSrvUavDescriptorSize);
+        auto passHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(handleHeapStart, mPassCbvOffset + frameIdx, mSRBuffer->DescriptorHeapSize());
 
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbViewDesc;
         cbViewDesc.BufferLocation = passCBAddress;
@@ -115,7 +92,7 @@ void D3DAppHelloWorld::BuildConstantBuffers()
             cbAddress += i * objBufSize;
             int heapIndex = frameIdx * objCount + i;
 
-            auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(handleHeapStart, heapIndex, mCbvSrvUavDescriptorSize); 
+            auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(handleHeapStart, heapIndex, mSRBuffer->DescriptorHeapSize());
 
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbViewDesc;
             cbViewDesc.BufferLocation = cbAddress;
@@ -125,43 +102,46 @@ void D3DAppHelloWorld::BuildConstantBuffers()
     }
 }
 
-void D3DAppHelloWorld::BuildRootSignature()
+void CreateRootSignature(ComPtr<ID3D12Device2> Device, const CD3DX12_ROOT_SIGNATURE_DESC& RootSignatureDesc, ID3D12RootSignature** RootSignature)
 {
-    CD3DX12_DESCRIPTOR_RANGE cubeRange;
-    cubeRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
-
-    CD3DX12_DESCRIPTOR_RANGE range;
-    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1, 0);
-
-    CD3DX12_ROOT_PARAMETER slotRootParameter[5];
-    slotRootParameter[0].InitAsConstantBufferView(0); //Object
-    slotRootParameter[1].InitAsConstantBufferView(1); //Pass
-    slotRootParameter[2].InitAsShaderResourceView(0, 1); //Material
-    slotRootParameter[3].InitAsDescriptorTable(1, &cubeRange, D3D12_SHADER_VISIBILITY_PIXEL);
-    slotRootParameter[4].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL); //Textures
-    
-
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     ComPtr<ID3DBlob> serializedRootSig = nullptr;
     ComPtr<ID3DBlob> errorBlob = nullptr;
 
-   /* CD3DX12_STATIC_SAMPLER_DESC samplers[1];
-    samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);*/
-
-    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
-    StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
-    rootSigDesc.NumStaticSamplers = 1;
-    rootSigDesc.pStaticSamplers = StaticSamplers;
-    
-    HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+    HRESULT hr = D3D12SerializeRootSignature(&RootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
     if (errorBlob != nullptr)
     {
         ::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
     }
 
     ThrowIfFailed(hr);
-    ThrowIfFailed(mDevice->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&mRootSignature)));
+    ThrowIfFailed(Device->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(RootSignature)));
+}
 
+void D3DAppHelloWorld::BuildDefaultRootSignature()
+{
+    CD3DX12_DESCRIPTOR_RANGE range[2];
+    range[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+    range[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 1, 0);
+
+    CD3DX12_ROOT_PARAMETER slotRootParameter[5];
+    slotRootParameter[0].InitAsConstantBufferView(0); //Object
+    slotRootParameter[1].InitAsConstantBufferView(1); //Pass
+    slotRootParameter[2].InitAsShaderResourceView(0, 1); //Material
+    slotRootParameter[3].InitAsDescriptorTable(1, &range[0], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
+    slotRootParameter[4].InitAsDescriptorTable(1, &range[1], D3D12_SHADER_VISIBILITY_PIXEL); //Textures
+
+
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
+    StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+    rootSigDesc.NumStaticSamplers = 1;
+    rootSigDesc.pStaticSamplers = StaticSamplers;
+
+    CreateRootSignature(mDevice, rootSigDesc, mRootSignature.GetAddressOf());
+}
+
+void D3DAppHelloWorld::BuildBlurRootSignature()
+{
     CD3DX12_DESCRIPTOR_RANGE blurRange[2];
     blurRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     blurRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
@@ -173,22 +153,32 @@ void D3DAppHelloWorld::BuildRootSignature()
 
     CD3DX12_ROOT_SIGNATURE_DESC rootBlurSigDesc(3, slotBlurRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    ComPtr<ID3DBlob> serializedBlurRootSig = nullptr;
-    ComPtr<ID3DBlob> errorBlurBlob = nullptr;
-    hr = D3D12SerializeRootSignature(&rootBlurSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-                                             serializedBlurRootSig.GetAddressOf(), errorBlurBlob.GetAddressOf());
+    CreateRootSignature(mDevice, rootBlurSigDesc, mPostProcessRootSignature.GetAddressOf());
+}
 
-    if (errorBlurBlob != nullptr)
-    {
-        ::OutputDebugStringA((char*)errorBlurBlob->GetBufferPointer());
-    }
-    ThrowIfFailed(hr);
+void D3DAppHelloWorld::BuildScreenRootSignature()
+{
+    CD3DX12_DESCRIPTOR_RANGE table;
+    table.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    
+    CD3DX12_ROOT_PARAMETER rootParameter[2];
+    rootParameter[0].InitAsDescriptorTable(1, &table, D3D12_SHADER_VISIBILITY_PIXEL);
+    rootParameter[1].InitAsConstants(1, 0);
 
-    ThrowIfFailed(mDevice->CreateRootSignature(
-        0,
-        serializedBlurRootSig->GetBufferPointer(),
-        serializedBlurRootSig->GetBufferSize(),
-        IID_PPV_ARGS(mPostProcessRootSignature.GetAddressOf())));
+    CD3DX12_ROOT_SIGNATURE_DESC rootScreenSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
+    StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+    rootScreenSigDesc.NumStaticSamplers = 1;
+    rootScreenSigDesc.pStaticSamplers = StaticSamplers;
+
+    CreateRootSignature(mDevice, rootScreenSigDesc, mScreenRootSignature.GetAddressOf());
+}
+
+void D3DAppHelloWorld::BuildRootSignature()
+{
+    BuildDefaultRootSignature();
+    BuildBlurRootSignature();
+    BuildScreenRootSignature();
 }
 
 void D3DAppHelloWorld::BuildShadersAndInputLayout()
@@ -199,6 +189,9 @@ void D3DAppHelloWorld::BuildShadersAndInputLayout()
     mcsVerticalByteCode = LoadBinary("Shaders/vertBlur_CS_cs.cso");
     mSkyVsByteCode = LoadBinary("Shaders/sky_SD_vs.cso");
     mSkyPsByteCode = LoadBinary("Shaders/sky_SD_ps.cso");
+
+    mQuadVsByteCode = LoadBinary("Shaders/quad_SD_vs.cso");
+    mQuadPsByteCode = LoadBinary("Shaders/quad_SD_ps.cso");
     UINT byteOffset = 0;
     mInputLayout =
     {
@@ -293,6 +286,35 @@ void D3DAppHelloWorld::BuildPSO()
     skyPsoDesc.PS = { reinterpret_cast<BYTE*>(mSkyPsByteCode->GetBufferPointer()), mSkyPsByteCode->GetBufferSize() };
     ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC screenPsoDesc = psoDesc;
+    screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
+    screenPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    screenPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    screenPsoDesc.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
+    screenPsoDesc.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
+
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC descPipelineState;
+    ZeroMemory(&descPipelineState, sizeof(descPipelineState));
+    
+    descPipelineState.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
+    descPipelineState.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
+    descPipelineState.InputLayout = { mInputLayout.data(), static_cast<UINT>(mInputLayout.size()) };
+    descPipelineState.pRootSignature = mScreenRootSignature.Get();
+    descPipelineState.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    descPipelineState.DepthStencilState.DepthEnable = false;
+    descPipelineState.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    descPipelineState.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    descPipelineState.RasterizerState.DepthClipEnable = false;
+    descPipelineState.SampleMask = UINT_MAX;
+    descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    descPipelineState.NumRenderTargets = 1;
+    //descPipelineState.RTVFormats[0] = mRtvFormat[0];
+    descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    descPipelineState.SampleDesc.Count = 1;
+
+    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["screen"])));
+
     D3D12_COMPUTE_PIPELINE_STATE_DESC horizontalBlurDesc;
     ZeroMemory(&horizontalBlurDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
     horizontalBlurDesc.pRootSignature = mPostProcessRootSignature.Get();
@@ -313,77 +335,59 @@ void D3DAppHelloWorld::BuildFrameResources()
 {
     for(int i = 0; i < gNumFrameResources; ++i)
     {
-        mFrameResources.push_back(std::make_unique<FrameResource>(mDevice.Get(), 1, mAllItems.size(), mMaterials.size()));
+        mFrameResources.push_back(std::make_unique<FrameResource>(mDevice.Get(), 1, mAllItems.size(), mMaterials.size(), mClientWidth, mClientHeight, mBackBufferFormat, mSRBuffer.get(), mRTBuffer.get()));
     }
 }
 
 void D3DAppHelloWorld::BuildShapeGeometry()
 {
     GeometryGenerator geoGen;
-    GeometryGenerator::MeshData circle = geoGen.CreateSphere(1, 500, 100);
-    GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
-    GeometryGenerator::MeshData lightBox = geoGen.CreateBox(5.0f, 5.0f, 5.0f, 1);
-
-    UINT circleVertexOffset = 0;
-    UINT gridVertexOffset = circleVertexOffset + circle.Vertices.size();
-    UINT lightBoxOffset = gridVertexOffset + grid.Vertices.size();
-
-    UINT circleIndexOffset = 0;
-    UINT gridIndexOffset = circleIndexOffset + circle.Indices32.size();
-    UINT lightBoxIndexOffset = gridIndexOffset + grid.Indices32.size();
-
-    SubmeshGeometry circleSubmesh;
-    circleSubmesh.IndexCount = circle.Indices32.size();
-    circleSubmesh.BaseVertexLocation = circleVertexOffset;
-    circleSubmesh.StartIndexLocation = circleIndexOffset;
-
-    SubmeshGeometry gridSubmesh;
-    gridSubmesh.IndexCount = grid.Indices32.size();
-    gridSubmesh.BaseVertexLocation = gridVertexOffset;
-    gridSubmesh.StartIndexLocation = gridIndexOffset;
-
-    SubmeshGeometry lightBoxSubmesh;
-    lightBoxSubmesh.IndexCount = lightBox.Indices32.size();
-    lightBoxSubmesh.BaseVertexLocation = lightBoxOffset;
-    lightBoxSubmesh.StartIndexLocation = lightBoxIndexOffset;
-
-    auto totalVertexCount = circle.Vertices.size() + grid.Vertices.size() + lightBox.Vertices.size();
-
-    std::vector<Vertex> vertices(totalVertexCount);
-    UINT k = 0;
-    for (size_t i = 0; i < circle.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = circle.Vertices[i].Position;
-        vertices[k].Normal = circle.Vertices[i].Normal;
-        vertices[k].Color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-        vertices[k].Tex0 = circle.Vertices[i].TexC;
-    }
-
-    for (size_t i = 0; i < grid.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = grid.Vertices[i].Position;
-        vertices[k].Normal = grid.Vertices[i].Normal;
-        vertices[k].Color = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
-        vertices[k].Tex0 = grid.Vertices[i].TexC;
-    }
-
-    for (size_t i = 0; i < lightBox.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = lightBox.Vertices[i].Position;
-        vertices[k].Normal = lightBox.Vertices[i].Normal;
-        vertices[k].Color = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-    }
-
+    //auto totalVertexCount = circle.Vertices.size() + grid.Vertices.size() + lightBox.Vertices.size();
+    
+    std::unordered_map<std::string, GeometryGenerator::MeshData> meshes = {
+        {"sphere", geoGen.CreateSphere(1, 500, 100) }
+       ,{"grid", geoGen.CreateGrid(20.0f, 30.0f, 60, 40)}
+       ,{"lightBox", geoGen.CreateBox(5.0f, 5.0f, 5.0f, 1)}
+       ,{"screenQuad",geoGen.CreateQuad(-1.0f, 1.0f, 2.0f, 2.0f, 0.0f) }
+    };
+        
+    auto geo = std::make_unique<MeshGeometry>();
+    geo->Name = "shapeGeo";
+    std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
-    indices.insert(indices.end(), std::begin(circle.GetIndices16()), std::end(circle.GetIndices16()));
-    indices.insert(indices.end(), std::begin(grid.GetIndices16()), std::end(grid.GetIndices16()));
-    indices.insert(indices.end(), std::begin(lightBox.GetIndices16()), std::end(lightBox.GetIndices16()));
+    UINT vertexOffset = 0;
+    UINT indexOffset = 0;
+    for (auto& e : meshes)
+    {
+        auto& mesh = e.second;
+
+        SubmeshGeometry submesh;
+        submesh.IndexCount = mesh.Indices32.size();
+        submesh.BaseVertexLocation = vertexOffset;
+        submesh.StartIndexLocation = indexOffset;
+
+        geo->DrawArgs[e.first] = submesh;
+
+        vertexOffset += e.second.Vertices.size();
+        indexOffset += e.second.Indices32.size();
+
+        for (size_t i = 0; i < mesh.Vertices.size(); ++i)
+        {
+            Vertex v;
+            v.Pos = mesh.Vertices[i].Position;
+            v.Tangent = mesh.Vertices[i].TangentU;
+            v.Normal = mesh.Vertices[i].Normal;
+            v.Color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+            v.Tex0 = mesh.Vertices[i].TexC;
+
+            vertices.push_back(v);
+        }
+
+        indices.insert(indices.end(), std::begin(mesh.GetIndices16()), std::end(mesh.GetIndices16()));
+    }
 
     const UINT vbByteSize = vertices.size() * sizeof(Vertex);
     const UINT ibByteSize = indices.size() * sizeof(uint16_t);
-
-    auto geo = std::make_unique<MeshGeometry>();
-    geo->Name = "shapeGeo";
 
     ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
     CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
@@ -399,54 +403,55 @@ void D3DAppHelloWorld::BuildShapeGeometry()
     geo->IndexFormat = DXGI_FORMAT_R16_UINT;
     geo->IndexBufferByteSize = ibByteSize;
 
-    geo->DrawArgs["sphere"] = circleSubmesh;
-    geo->DrawArgs["grid"] = gridSubmesh;
-    geo->DrawArgs["lightBox"] = lightBoxSubmesh;
-
     mGeometries[geo->Name] = std::move(geo);
 }
 
 void D3DAppHelloWorld::BuildRenderItems()
 {
-    int objIndex = 0;
-    auto circleRItem = std::make_unique<RenderItem>();
-    XMStoreFloat4x4(&circleRItem->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 2.0f, 3.0f));
+    UINT objIndex = 0;
+    std::unordered_map<std::string, std::string> geoMat = 
+    {
+        {"sphere", "sphere"}
+       ,{"grid", "floor"}
+       ,{"lightBox", "floor"}
+    };
 
-    circleRItem->ObjCBIndex = objIndex++;
-    circleRItem->Geo = mGeometries["shapeGeo"].get();
-    circleRItem->Mat = mMaterials["sphere"].get();
-    circleRItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    for (auto& g : mGeometries["shapeGeo"]->DrawArgs)
+    {
+        if (g.first == "screenQuad") continue;
+        auto ri = std::make_unique<RenderItem>();;
+        ri->ObjCBIndex = objIndex++;
+        ri->Geo = mGeometries["shapeGeo"].get();
+        ri->Mat = mMaterials[geoMat[g.first]].get();
+        ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-    circleRItem->IndexCount = circleRItem->Geo->DrawArgs["sphere"].IndexCount;
-    circleRItem->StartIndexLocation = circleRItem->Geo->DrawArgs["sphere"].StartIndexLocation;
-    circleRItem->BaseVertexLocation = circleRItem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+        ri->IndexCount = g.second.IndexCount;
+        ri->StartIndexLocation = g.second.StartIndexLocation;
+        ri->BaseVertexLocation = g.second.BaseVertexLocation;
 
-    mLayerRItems[(int)RenderLayer::Opaque].push_back(circleRItem.get());
-    mAllItems.push_back(std::move(circleRItem));
+        if (g.first == "sphere")
+        {
+            XMStoreFloat4x4(&ri->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 2.0f, 3.0f));
+        }
+        else if (g.first == "lightBox")
+        {
+            XMFLOAT3 lightPos;
+            XMStoreFloat3(&lightPos, MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi));
+            XMStoreFloat4x4(&ri->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
+            mLightBox = ri.get();
+        }
+        else
+        {
+            ri->World = MathHelper::Identity4x4();
+        }
 
-    auto gridRItem = std::make_unique<RenderItem>();
-    gridRItem->World = MathHelper::Identity4x4();
-
-    gridRItem->ObjCBIndex = objIndex++;
-    gridRItem->Geo = mGeometries["shapeGeo"].get();
-    gridRItem->Mat = mMaterials["floor"].get();
-    gridRItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-
-    gridRItem->IndexCount = gridRItem->Geo->DrawArgs["grid"].IndexCount;
-    gridRItem->StartIndexLocation = gridRItem->Geo->DrawArgs["grid"].StartIndexLocation;
-    gridRItem->BaseVertexLocation = gridRItem->Geo->DrawArgs["grid"].BaseVertexLocation;
-
-    mLayerRItems[(int)RenderLayer::Opaque].push_back(gridRItem.get());
-    mAllItems.push_back(std::move(gridRItem));
-
-    auto lightBoxItem = std::make_unique<RenderItem>();
-    XMFLOAT3 lightPos;
-    XMStoreFloat3(&lightPos, MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi));
-    XMStoreFloat4x4(&lightBoxItem->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
-
+        mLayerRItems[(int)RenderLayer::Opaque].push_back(ri.get());
+        mAllItems.push_back(std::move(ri));
+    }
+    
     auto skyRItem = std::make_unique<RenderItem>();
     XMStoreFloat4x4(&skyRItem->World, XMMatrixScaling(50.0f, 50.0f, 50.0f));
-
+    
     skyRItem->ObjCBIndex = objIndex++;
     skyRItem->Geo = mGeometries["shapeGeo"].get();
     skyRItem->Mat = mMaterials["sky"].get();
@@ -459,18 +464,19 @@ void D3DAppHelloWorld::BuildRenderItems()
     mLayerRItems[(int)RenderLayer::Sky].push_back(skyRItem.get());
     mAllItems.push_back(std::move(skyRItem));
 
-    //LAST ITEM NEEDS TO BE LIGHTBOX FIX ME!!!!!!
-    lightBoxItem->ObjCBIndex = objIndex++;
-    lightBoxItem->Geo = mGeometries["shapeGeo"].get();
-    lightBoxItem->Mat = mMaterials["floor"].get();
-    lightBoxItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    auto screenQuad = std::make_unique<RenderItem>();
+    screenQuad->World = MathHelper::Identity4x4();;
 
-    lightBoxItem->IndexCount = lightBoxItem->Geo->DrawArgs["lightBox"].IndexCount;
-    lightBoxItem->StartIndexLocation = lightBoxItem->Geo->DrawArgs["lightBox"].StartIndexLocation;
-    lightBoxItem->BaseVertexLocation = lightBoxItem->Geo->DrawArgs["lightBox"].BaseVertexLocation;
+    screenQuad->ObjCBIndex = objIndex++;
+    screenQuad->Geo = mGeometries["shapeGeo"].get();
+    screenQuad->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    screenQuad->Mat = nullptr;
+    screenQuad->IndexCount = screenQuad->Geo->DrawArgs["screenQuad"].IndexCount;
+    screenQuad->StartIndexLocation = screenQuad->Geo->DrawArgs["screenQuad"].StartIndexLocation;
+    screenQuad->BaseVertexLocation = screenQuad->Geo->DrawArgs["screenQuad"].BaseVertexLocation;
 
-    mLayerRItems[(int)RenderLayer::Opaque].push_back(lightBoxItem.get());
-    mAllItems.push_back(std::move(lightBoxItem));
+    mLayerRItems[(int)RenderLayer::PostProcessing].push_back(screenQuad.get());
+    mAllItems.push_back(std::move(screenQuad));
 }
 
 void D3DAppHelloWorld::BuildMaterials()
@@ -482,16 +488,17 @@ void D3DAppHelloWorld::BuildMaterials()
     floor->DiffuseAlbedo = XMFLOAT4(1.0f, 0.6f, 0.6f, 1.0f);
     floor->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
     floor->Roughness = 0.05f;
-    floor->DiffuseSrvHeapIndex = 1;
+    floor->DiffuseSrvHeapIndex = mTextures[2]->ID;
 
     auto sphere = std::make_unique<Material>();
     sphere->Name = "spheres";
     sphere->NumFramesDirty = gNumFrameResources;
     sphere->MatCBIndex = 0;
     sphere->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-    sphere->FresnelR0 = XMFLOAT3(0.95f, 0.93f, 0.88f);
+    sphere->FresnelR0 = XMFLOAT3(1.0f, 1.0f, 1.0f);
     sphere->Roughness = 0.05f;
-    sphere->DiffuseSrvHeapIndex = 0;
+    sphere->DiffuseSrvHeapIndex = mTextures[0]->ID;
+    sphere->hasNormalMap = 1;
 
     auto sky = std::make_unique<Material>();
     sky->Name = "sky";
@@ -500,7 +507,7 @@ void D3DAppHelloWorld::BuildMaterials()
     sky->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
     sky->FresnelR0 = XMFLOAT3(0.95f, 0.93f, 0.88f);
     sky->Roughness = 0.05f;
-    sky->DiffuseSrvHeapIndex = 2;
+    sky->DiffuseSrvHeapIndex = mTextures[3]->ID;
     
     mMaterials["sphere"] = std::move(sphere);
     mMaterials["floor"] = std::move(floor);
@@ -509,57 +516,36 @@ void D3DAppHelloWorld::BuildMaterials()
 
 void D3DAppHelloWorld::BuildTextures()
 {
-    //Create Texture Resource
-    auto tex = std::make_unique<Texture>();
-    tex->Name = "WoodCrate";
-    tex->FileName = L"Texture/WoodCrate01.dds";
-    
-    ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(mDevice.Get(), mCommandList.Get(), tex->FileName.c_str(), tex->Resource, tex->UploadHeap));
+    std::vector<std::wstring> texPaths = { 
+        L"Texture/pbr/beaten-up-metal1-albedo.dds",
+        L"Texture/pbr/beaten-up-metal1-Normal-dx.dds",
+        L"Texture/tile.dds",
+        L"Texture/grasscube1024.dds"
+    };
 
-    auto texTile = std::make_unique<Texture>();
-    texTile->Name = "Tile";
-    texTile->FileName = L"Texture/tile.dds";
-    ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(mDevice.Get(), mCommandList.Get(), texTile->FileName.c_str(), texTile->Resource, texTile->UploadHeap));
+    for (int i = 0; i < texPaths.size(); ++i)
+    {
+        auto& texPath = texPaths[i];
+        mTextures[i] = std::make_unique<Texture>();
+        mTextures[i]->ID = i;
+        ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(mDevice.Get(), mCommandList.Get(), texPath.c_str(), mTextures[i]->Resource, mTextures[i]->UploadHeap));
 
-    auto skyTex = std::make_unique<Texture>();
-    skyTex->Name = "Sky";
-    skyTex->FileName = L"Texture/grasscube1024.dds";
-    ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(mDevice.Get(), mCommandList.Get(), skyTex->FileName.c_str(), skyTex->Resource, skyTex->UploadHeap));
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
+        srvDesc.Format = mTextures[i]->Resource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = mTextures[i]->Resource->GetDesc().MipLevels;
 
-    //Creates the srv descriptors
-    CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-    handle.Offset(4, mCbvSrvUavDescriptorSize);
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
-    srvDesc.Format = tex->Resource->GetDesc().Format;
-    srvDesc.Texture2D.MipLevels = tex->Resource->GetDesc().MipLevels;
-    
-    mDevice->CreateShaderResourceView(tex->Resource.Get(), &srvDesc, handle);
-    
-    handle.Offset(1, mCbvSrvUavDescriptorSize);
-    srvDesc.Format = texTile->Resource->GetDesc().Format;
-    srvDesc.Texture2D.MipLevels = texTile->Resource->GetDesc().MipLevels;
-
-    mDevice->CreateShaderResourceView(texTile->Resource.Get(), &srvDesc, handle);
-
-    handle.Offset(1, mCbvSrvUavDescriptorSize);
-    srvDesc.Format = skyTex->Resource->GetDesc().Format;
-    srvDesc.TextureCube.MostDetailedMip = 0;
-    srvDesc.TextureCube.MipLevels = skyTex->Resource->GetDesc().MipLevels;
-    srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-
-
-    mDevice->CreateShaderResourceView(skyTex->Resource.Get(), &srvDesc, handle);
-
-    mTextures["WoodCrate"] = std::move(tex);
-    mTextures["Floor"] = std::move(texTile);
-    mTextures["Sky"] = std::move(skyTex);
+        if (i == texPaths.size() - 1)
+        {
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+        }
+        mTextures[i]->handle = mSRBuffer->GpuHandle();
+        mDevice->CreateShaderResourceView(mTextures[i]->Resource.Get(), &srvDesc, mSRBuffer->CpuHandle());
+    }
 }
 
 void D3DAppHelloWorld::UpdateMaterialCB()
@@ -576,6 +562,7 @@ void D3DAppHelloWorld::UpdateMaterialCB()
             matConstants.FresnelR0 = mat->FresnelR0;
             matConstants.Roughness = mat->Roughness;
             matConstants.DiffuseMapIndex = mat->DiffuseSrvHeapIndex;
+            matConstants.hasNormalMap = mat->hasNormalMap;
             currMaterialCB->CopyData(mat->MatCBIndex,
                                      matConstants);
             // Next FrameResource need to be updated too.
@@ -594,7 +581,7 @@ void D3DAppHelloWorld::UpdateObjectCBs()
             XMMATRIX world = XMLoadFloat4x4(&item->World);
             ObjectConstants objConstants;
             XMStoreFloat4x4(&objConstants.World, world);
-            objConstants.MaterialIndex = item->Mat->MatCBIndex;
+            objConstants.MaterialIndex = item->Mat ? item->Mat->MatCBIndex : 0;
             currObjectCB->CopyData(item->ObjCBIndex, objConstants);
             item->NumFramesDirty--;
         }
@@ -614,8 +601,8 @@ void D3DAppHelloWorld::UpdateMainPassCB()
 
     XMFLOAT3 lightPos;
     XMStoreFloat3(&lightPos, MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi));
-    XMStoreFloat4x4(&mAllItems.back()->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
-    mAllItems.back()->NumFramesDirty = 3;
+    XMStoreFloat4x4(&mLightBox->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
+    mLightBox->NumFramesDirty = 3;
     XMStoreFloat4x4(&mMainPassCB.View, view);
     XMStoreFloat4x4(&mMainPassCB.InvView, invView);
     XMStoreFloat4x4(&mMainPassCB.Proj, proj);
@@ -631,7 +618,7 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     mMainPassCB.FarZ = 1000.0f;
     mMainPassCB.TotalTime = 0.0f;
     mMainPassCB.DeltaTime = 0.0f;
-    mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.25f, 1.0f };
+    mMainPassCB.AmbientLight = { 0.05f, 0.05f, 0.05f, 1.0f };
     mMainPassCB.Lights[0].Strength = { 1.0f, 1.0f, 1.0f };
 
     auto currPassCB = mCurrentFrameResource->PassCB.get();
@@ -702,15 +689,33 @@ void D3DAppHelloWorld::Render()
     ImGui::NewFrame();
 
     static int blurPasses = 1;
+    static float reflective = mMaterials["sphere"]->FresnelR0.x;
+    static float roughness = mMaterials["sphere"]->Roughness;
+    
     // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
     {
         ImGui::Begin("Test");                          // Create a window called "Hello, world!" and append into it.
         ImGui::Checkbox("Blur", &mIsBlurEnabled);      // Edit bools storing our window open/close state
         ImGui::SliderInt("Blur Passes", &blurPasses, 1, 20);
+        if (ImGui::SliderFloat("Reflection", &reflective, 0.0f, 1.0f))
+        {
+            mMaterials["sphere"]->FresnelR0.x = reflective;
+            mMaterials["sphere"]->FresnelR0.y = reflective;
+            mMaterials["sphere"]->FresnelR0.z = reflective;
+            mMaterials["sphere"]->NumFramesDirty = 3;
+        }
+
+        if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f))
+        {
+            mMaterials["sphere"]->Roughness = roughness;
+            mMaterials["sphere"]->NumFramesDirty = 3;
+        }
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
     }
     
+    
+        
     ///////////////////////////
 
 
@@ -721,41 +726,31 @@ void D3DAppHelloWorld::Render()
     mCommandList->RSSetScissorRects(1, &scissorRect);
 
     auto currentBackBuffer = mSwapChainBuffers[mCurrentBufferIndex].Get();
-    auto renderTargetView = CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mCurrentBufferIndex, mRtvDescriptorSize);
+    auto renderTargetView = mRTHandles[mCurrentBufferIndex];
     auto depthStencilView = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->ScreenMap.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
     float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
-
+    
+    mCommandList->ClearRenderTargetView(mCurrentFrameResource->ScreenCpuRtv, clearColor, 0, nullptr);
     mCommandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-    mCommandList->OMSetRenderTargets(1, &renderTargetView, true, &depthStencilView);
+    mCommandList->OMSetRenderTargets(1, &mCurrentFrameResource->ScreenCpuRtv, true, &depthStencilView);
+
+    ID3D12DescriptorHeap* descriptorHeaps[] = { mSRBuffer->DescriptorHeap() };
+    mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
     mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
-    //auto handle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart(), passCBVIndex, mCbvSrvUavDescriptorSize);
-
-    //mCommandList->SetGraphicsRootDescriptorTable(1, handle);
-
-
     //bind all materials
-   auto matCB = mCurrentFrameResource->MaterialCB->Resource();
-   mCommandList->SetGraphicsRootShaderResourceView(2, matCB->GetGPUVirtualAddress());
+    auto matCB = mCurrentFrameResource->MaterialCB->Resource();
+    mCommandList->SetGraphicsRootShaderResourceView(2, matCB->GetGPUVirtualAddress());
 
-   CD3DX12_GPU_DESCRIPTOR_HANDLE skyTexDescriptor(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-   skyTexDescriptor.Offset(6, mCbvSrvUavDescriptorSize);
-   mCommandList->SetGraphicsRootDescriptorTable(3, skyTexDescriptor);
+    mCommandList->SetGraphicsRootDescriptorTable(3, mTextures[3]->handle);
   
     //bind all textures
-   CD3DX12_GPU_DESCRIPTOR_HANDLE handle(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-   handle.Offset(4, mCbvSrvUavDescriptorSize);
-   mCommandList->SetGraphicsRootDescriptorTable(4, handle);
-
-   /*handle.Offset(2, mCbvSrvUavDescriptorSize);
-   mCommandList->SetGraphicsRootDescriptorTable(4, handle);*/
-
+    mCommandList->SetGraphicsRootDescriptorTable(4, mTextures[0]->handle);
 
     auto passCBVIndex = mPassCbvOffset + mCurrentFrameResourceIndex;
     auto passCB = mCurrentFrameResource->PassCB->Resource();
@@ -767,9 +762,19 @@ void D3DAppHelloWorld::Render()
     mCommandList->SetPipelineState(mPSOs["sky"].Get());
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
 
-    //UI Descriptor
-    ID3D12DescriptorHeap* descriptorHeaps[] = { mUISrvDescriptorHeap.Get() };
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->ScreenMap.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+    
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
+
+    mCommandList->OMSetRenderTargets(1, &renderTargetView, true, nullptr);
     mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+    mCommandList->SetGraphicsRootSignature(mScreenRootSignature.Get());
+    mCommandList->SetPipelineState(mPSOs["screen"].Get());
+    mCommandList->SetGraphicsRootDescriptorTable(0, mCurrentFrameResource->ScreenGpuSrv);
+    float test = 0.2f;
+    mCommandList->SetGraphicsRoot32BitConstants(1, 1, &test, 0);
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::PostProcessing]);
 
     if (mIsBlurEnabled)
     {
@@ -787,6 +792,8 @@ void D3DAppHelloWorld::Render()
 
     ImGui::Render();
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
+
+    
 
     ThrowIfFailed(mCommandList->Close());
 

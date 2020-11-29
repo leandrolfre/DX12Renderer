@@ -24,6 +24,7 @@ enum class RenderLayer
 	Opaque,
 	Transparent,
 	Sky,
+	PostProcessing,
 	RenderLayerCount
 };
 
@@ -51,6 +52,9 @@ private:
 	void BuildDescriptorHeaps();
 	void BuildConstantBuffers();
 	void BuildRootSignature();
+	void BuildDefaultRootSignature();
+	void BuildBlurRootSignature();
+	void BuildScreenRootSignature();
 	void BuildShadersAndInputLayout();
 	void BuildPSO();
 	void BuildFrameResources();
@@ -75,11 +79,11 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
 	std::unordered_map < std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
-	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
+	std::unordered_map<int, std::unique_ptr<Texture>> mTextures;
 	ComPtr<ID3D12RootSignature> mRootSignature;
 	ComPtr<ID3D12RootSignature> mPostProcessRootSignature;
+	ComPtr<ID3D12RootSignature> mScreenRootSignature;
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap;
-	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap;
 	ComPtr<ID3D12DescriptorHeap> mUISrvDescriptorHeap;
 	ComPtr<ID3DBlob> mvsByteCode;
 	ComPtr<ID3DBlob> mpsByteCode;
@@ -87,8 +91,12 @@ private:
 	ComPtr<ID3DBlob> mcsVerticalByteCode;
 	ComPtr<ID3DBlob> mSkyVsByteCode;
 	ComPtr<ID3DBlob> mSkyPsByteCode;
+	ComPtr<ID3DBlob> mQuadVsByteCode;
+	ComPtr<ID3DBlob> mQuadPsByteCode;
 	std::unique_ptr<BlurFilter> mBlurFilter;
 	FrameResource* mCurrentFrameResource = nullptr;
+	RenderItem* mLightBox;
+	std::unique_ptr<ShaderResourceBuffer> mSRBuffer;
 	UINT mCurrentFrameResourceIndex = 0;
 	int mPassCbvOffset = 0;
 	bool mIsWireframe = false;

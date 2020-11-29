@@ -28,6 +28,7 @@ using namespace Microsoft::WRL;
 #pragma comment(lib, "dxguid.lib")
 
 struct ObjectConstants;
+class ShaderResourceBuffer;
 
 class D3DApp
 {
@@ -73,10 +74,12 @@ protected:
 	ComPtr<ID3D12GraphicsCommandList> mCommandList;
 	ComPtr<ID3D12CommandAllocator> mCommandAllocator;
 	ComPtr<IDXGISwapChain4> mSwapChain;
-	ComPtr<ID3D12DescriptorHeap> mRtvHeap;
+	//ComPtr<ID3D12DescriptorHeap> mRtvHeap;
 	ComPtr<ID3D12DescriptorHeap> mDsvHeap;
 	ComPtr<ID3D12Resource> mSwapChainBuffers[mSwapChainBufferCount];
 	ComPtr<ID3D12Resource> mDepthStencilBuffer;
+	std::unique_ptr<ShaderResourceBuffer> mRTBuffer;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE mRTHandles[mSwapChainBufferCount];
 	DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
 	UINT64 mFenceValues[mSwapChainBufferCount];
 	UINT64 mFenceValue;
@@ -86,7 +89,6 @@ protected:
 	UINT mCurrentBufferIndex;
 	UINT mDsvDescriptorSize;
 	UINT mRtvDescriptorSize;
-	UINT mCbvSrvUavDescriptorSize;
 	const wchar_t* mWindowClassName;
 	const wchar_t* mWindowTitleName;
 	bool mAllowTearing;

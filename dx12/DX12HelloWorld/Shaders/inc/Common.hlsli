@@ -18,7 +18,7 @@ struct MaterialData
 	uint DiffuseMapIndex;
 	uint MatPad0;
 	uint MatPad1;
-	uint MatPad2;
+	int hasNormalMap;
 };
 
 struct Material
@@ -58,6 +58,6 @@ cbuffer cbPerPass : register(b1)
 };
 
 TextureCube gCubeMap : register(t0);
-Texture2D gDiffuseMap[2] : register(t1);
+Texture2D gMaterialMap[3] : register(t1);
 StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
 SamplerState gLinearSample : register(s0);

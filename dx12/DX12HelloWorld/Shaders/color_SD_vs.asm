@@ -63,7 +63,7 @@
 // Name                 Index   Mask Register SysValue  Format   Used
 // -------------------- ----- ------ -------- -------- ------- ------
 // POSITION                 0   xyz         0     NONE   float   xyz 
-// TANGENT                  0   xyz         1     NONE   float       
+// TANGENT                  0   xyz         1     NONE   float   xyz 
 // NORMAL                   0   xyz         2     NONE   float   xyz 
 // TEX                      0   xy          3     NONE   float   xy  
 // TEX                      1   xy          4     NONE   float       
@@ -78,19 +78,24 @@
 // POSITION                 0   xyz         1     NONE   float   xyz 
 // NORMAL                   0   xyz         2     NONE   float   xyz 
 // TEXCOORD                 0   xy          3     NONE   float   xy  
+// TANGENT                  0   xyz         4     NONE   float   xyz 
+// Binormal                 0   xyz         5     NONE   float   xyz 
 //
 vs_5_1
 dcl_globalFlags refactoringAllowed | skipOptimization
 dcl_constantbuffer CB0[0:0][4], immediateIndexed, space=0
 dcl_constantbuffer CB1[1:1][20], immediateIndexed, space=0
 dcl_input v0.xyz
+dcl_input v1.xyz
 dcl_input v2.xyz
 dcl_input v3.xy
 dcl_output_siv o0.xyzw, position
 dcl_output o1.xyz
 dcl_output o2.xyz
 dcl_output o3.xy
-dcl_temps 4
+dcl_output o4.xyz
+dcl_output o5.xyz
+dcl_temps 6
 //
 // Initial variable locations:
 //   v0.x <- vin.PosL.x; v0.y <- vin.PosL.y; v0.z <- vin.PosL.z; 
@@ -99,12 +104,14 @@ dcl_temps 4
 //   v3.x <- vin.Tex0.x; v3.y <- vin.Tex0.y; 
 //   v4.x <- vin.Tex1.x; v4.y <- vin.Tex1.y; 
 //   v5.x <- Color.x; v5.y <- Color.y; v5.z <- Color.z; v5.w <- Color.w; 
+//   o5.x <- <VS return value>.BitangentW.x; o5.y <- <VS return value>.BitangentW.y; o5.z <- <VS return value>.BitangentW.z; 
+//   o4.x <- <VS return value>.TangentW.x; o4.y <- <VS return value>.TangentW.y; o4.z <- <VS return value>.TangentW.z; 
 //   o3.x <- <VS return value>.TexCoord.x; o3.y <- <VS return value>.TexCoord.y; 
 //   o2.x <- <VS return value>.NormalW.x; o2.y <- <VS return value>.NormalW.y; o2.z <- <VS return value>.NormalW.z; 
 //   o1.x <- <VS return value>.PosW.x; o1.y <- <VS return value>.PosW.y; o1.z <- <VS return value>.PosW.z; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 38 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
+#line 40 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
 mul r0.xyzw, v0.xxxx, CB0[0][0].xyzw
 mul r1.xyzw, v0.yyyy, CB0[0][1].xyzw
 add r0.xyzw, r0.xyzw, r1.xyzw
@@ -113,10 +120,10 @@ add r0.xyzw, r0.xyzw, r1.xyzw
 mul r1.xyzw, CB0[0][3].xyzw, l(1.000000, 1.000000, 1.000000, 1.000000)
 add r0.xyzw, r0.xyzw, r1.xyzw  // r0.x <- posW.x; r0.y <- posW.y; r0.z <- posW.z; r0.w <- posW.w
 
-#line 39
+#line 41
 mov r0.xyz, r0.xyzx  // r0.x <- vout.PosW.x; r0.y <- vout.PosW.y; r0.z <- vout.PosW.z
 
-#line 42
+#line 44
 mul r1.xyzw, r0.xxxx, CB1[1][16].xyzw
 mul r2.xyzw, r0.yyyy, CB1[1][17].xyzw
 add r1.xyzw, r1.xyzw, r2.xyzw
@@ -125,20 +132,35 @@ add r1.xyzw, r1.xyzw, r2.xyzw
 mul r2.xyzw, r0.wwww, CB1[1][19].xyzw
 add r1.xyzw, r1.xyzw, r2.xyzw  // r1.x <- vout.PosH.x; r1.y <- vout.PosH.y; r1.z <- vout.PosH.z; r1.w <- vout.PosH.w
 
-#line 44
+#line 46
 mul r2.xyz, v2.xxxx, CB0[0][0].xyzx
 mul r3.xyz, v2.yyyy, CB0[0][1].xyzx
 add r2.xyz, r2.xyzx, r3.xyzx
 mul r3.xyz, v2.zzzz, CB0[0][2].xyzx
 add r2.xyz, r2.xyzx, r3.xyzx  // r2.x <- vout.NormalW.x; r2.y <- vout.NormalW.y; r2.z <- vout.NormalW.z
 
-#line 45
-mov r3.xy, v3.xyxx  // r3.x <- vout.TexCoord.x; r3.y <- vout.TexCoord.y
+#line 47
+mul r3.xyz, v1.xxxx, CB0[0][0].xyzx
+mul r4.xyz, v1.yyyy, CB0[0][1].xyzx
+add r3.xyz, r3.xyzx, r4.xyzx
+mul r4.xyz, v1.zzzz, CB0[0][2].xyzx
+add r3.xyz, r3.xyzx, r4.xyzx  // r3.x <- vout.TangentW.x; r3.y <- vout.TangentW.y; r3.z <- vout.TangentW.z
 
-#line 46
+#line 48
+mul r4.xyz, r2.yzxy, r3.zxyz
+mul r5.xyz, r2.zxyz, r3.yzxy
+mov r5.xyz, -r5.xyzx
+add r4.xyz, r4.xyzx, r5.xyzx  // r4.x <- vout.BitangentW.x; r4.y <- vout.BitangentW.y; r4.z <- vout.BitangentW.z
+
+#line 49
+mov r5.xy, v3.xyxx  // r5.x <- vout.TexCoord.x; r5.y <- vout.TexCoord.y
+
+#line 50
 mov o0.xyzw, r1.xyzw
 mov o1.xyz, r0.xyzx
 mov o2.xyz, r2.xyzx
-mov o3.xy, r3.xyxx
+mov o4.xyz, r3.xyzx
+mov o5.xyz, r4.xyzx
+mov o3.xy, r5.xyxx
 ret 
-// Approximately 26 instruction slots used
+// Approximately 37 instruction slots used

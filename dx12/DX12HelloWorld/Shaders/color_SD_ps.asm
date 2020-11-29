@@ -32,7 +32,7 @@
 //   float gFarZ;                       // Offset:  420 Size:     4 [unused]
 //   float gTotalTime;                  // Offset:  424 Size:     4 [unused]
 //   float gDeltaTime;                  // Offset:  428 Size:     4 [unused]
-//   float4 gAmbientLight;              // Offset:  432 Size:    16
+//   float4 gAmbientLight;              // Offset:  432 Size:    16 [unused]
 //   
 //   struct Light
 //   {
@@ -60,7 +60,7 @@
 //       uint DiffuseMapIndex;          // Offset:   32
 //       uint MatPad0;                  // Offset:   36
 //       uint MatPad1;                  // Offset:   40
-//       uint MatPad2;                  // Offset:   44
+//       int hasNormalMap;              // Offset:   44
 //
 //   } $Element;                        // Offset:    0 Size:    48
 //
@@ -72,8 +72,9 @@
 // Name                                 Type  Format         Dim      ID      HLSL Bind  Count
 // ------------------------------ ---------- ------- ----------- ------- -------------- ------
 // gLinearSample                     sampler      NA          NA      S0             s0      1 
-// gDiffuseMap                       texture  float4          2d      T0             t1      2 
-// gMaterialData                     texture  struct         r/o      T1      t0,space1      1 
+// gCubeMap                          texture  float4        cube      T0             t0      1 
+// gMaterialMap                      texture  float4          2d      T1             t1      3 
+// gMaterialData                     texture  struct         r/o      T2      t0,space1      1 
 // cbPerObject                       cbuffer      NA          NA     CB0            cb0      1 
 // cbPerPass                         cbuffer      NA          NA     CB1            cb1      1 
 //
@@ -87,6 +88,8 @@
 // POSITION                 0   xyz         1     NONE   float   xyz 
 // NORMAL                   0   xyz         2     NONE   float   xyz 
 // TEXCOORD                 0   xy          3     NONE   float   xy  
+// TANGENT                  0   xyz         4     NONE   float   xyz 
+// Binormal                 0   xyz         5     NONE   float   xyz 
 //
 //
 // Output signature:
@@ -100,13 +103,16 @@ dcl_globalFlags refactoringAllowed | skipOptimization
 dcl_constantbuffer CB0[0:0][5], immediateIndexed, space=0
 dcl_constantbuffer CB1[1:1][30], immediateIndexed, space=0
 dcl_sampler S0[0:0], mode_default, space=0
-dcl_resource_texture2d (float,float,float,float) T0[1:2], space=0
-dcl_resource_structured T1[0:0], 48, space=1
+dcl_resource_texturecube (float,float,float,float) T0[0:0], space=0
+dcl_resource_texture2d (float,float,float,float) T1[1:3], space=0
+dcl_resource_structured T2[0:0], 48, space=1
 dcl_input_ps linear v1.xyz
 dcl_input_ps linear v2.xyz
 dcl_input_ps linear v3.xy
+dcl_input_ps linear v4.xyz
+dcl_input_ps linear v5.xyz
 dcl_output o0.xyzw
-dcl_temps 9
+dcl_temps 10
 dcl_indexableTemp x0[3], 4
 //
 // Initial variable locations:
@@ -114,128 +120,209 @@ dcl_indexableTemp x0[3], 4
 //   v1.x <- pin.PosW.x; v1.y <- pin.PosW.y; v1.z <- pin.PosW.z; 
 //   v2.x <- pin.NormalW.x; v2.y <- pin.NormalW.y; v2.z <- pin.NormalW.z; 
 //   v3.x <- pin.TexCoord.x; v3.y <- pin.TexCoord.y; 
+//   v4.x <- pin.TangentW.x; v4.y <- pin.TangentW.y; v4.z <- pin.TangentW.z; 
+//   v5.x <- pin.BitangentW.x; v5.y <- pin.BitangentW.y; v5.z <- pin.BitangentW.z; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
-#line 51 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
-ld_structured r0.x, CB0[0][4].x, l(12), T1[0].xxxx  // r0.x <- matData.DiffuseAlbedo.w
-ld_structured r0.y, CB0[0][4].x, l(28), T1[0].xxxx  // r0.y <- matData.Roughness
-ld_structured r0.z, CB0[0][4].x, l(32), T1[0].xxxx  // r0.z <- matData.DiffuseMapIndex
-
-#line 53
-dp3 r0.w, v2.xyzx, v2.xyzx
-rsq r0.w, r0.w
-mul r1.xyz, r0.wwww, v2.xyzx  // r1.x <- pin.NormalW.x; r1.y <- pin.NormalW.y; r1.z <- pin.NormalW.z
-
-#line 54
-mov r2.xyz, -v1.xyzx
-add r2.xyz, r2.xyzx, CB1[1][24].xyzx
-dp3 r0.w, r2.xyzx, r2.xyzx
-rsq r0.w, r0.w
-mul r2.xyz, r0.wwww, r2.xyzx  // r2.x <- viewDir.x; r2.y <- viewDir.y; r2.z <- viewDir.z
-
-#line 55
-sample r3.yzw, v3.xyxx, T0[r0.z + 1].wxyz, S0[0]
-mov r3.yzw, r3.yyzw  // r3.y <- diffuse.x; r3.z <- diffuse.y; r3.w <- diffuse.z
-
-#line 56
-mul r4.xyz, r3.yzwy, CB1[1][27].xyzx  // r4.x <- ambient.x; r4.y <- ambient.y; r4.z <- ambient.z
+#line 55 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
+ld_structured r0.x, CB0[0][4].x, l(12), T2[0].xxxx  // r0.x <- matData.DiffuseAlbedo.w
+ld_structured r1.x, CB0[0][4].x, l(16), T2[0].xxxx  // r1.x <- matData.FresnelR0.x
+ld_structured r1.y, CB0[0][4].x, l(20), T2[0].xxxx  // r1.y <- matData.FresnelR0.y
+ld_structured r1.z, CB0[0][4].x, l(24), T2[0].xxxx  // r1.z <- matData.FresnelR0.z
+ld_structured r0.y, CB0[0][4].x, l(28), T2[0].xxxx  // r0.y <- matData.Roughness
+ld_structured r0.z, CB0[0][4].x, l(32), T2[0].xxxx  // r0.z <- matData.DiffuseMapIndex
+ld_structured r0.w, CB0[0][4].x, l(44), T2[0].xxxx  // r0.w <- matData.hasNormalMap
 
 #line 57
-mov r0.y, -r0.y
-add r3.x, r0.y, l(1.000000)  // r3.x <- shininess
+dp3 r2.x, v2.xyzx, v2.xyzx
+rsq r2.x, r2.x
+mul r2.xyz, r2.xxxx, v2.xyzx  // r2.x <- pin.NormalW.x; r2.y <- pin.NormalW.y; r2.z <- pin.NormalW.z
 
-#line 58
-mov r3.yzw, r3.yyzw  // r3.y <- mat.DiffuseAlbedo.x; r3.z <- mat.DiffuseAlbedo.y; r3.w <- mat.DiffuseAlbedo.z
-mov r3.x, r3.x  // r3.x <- mat.Shininess
+#line 59
+ine r0.w, l(0, 0, 0, 0), r0.w
+if_nz r0.w
 
-#line 60
-mov r0.yzw, l(0,1.000000,1.000000,1.000000)  // r0.y <- shadowFactor.x; r0.z <- shadowFactor.y; r0.w <- shadowFactor.z
+#line 61
+  mov r3.xyz, r2.xyzx  // r3.x <- N.x; r3.y <- N.y; r3.z <- N.z
 
 #line 62
+  dp3 r0.w, v4.xyzx, r3.xyzx
+  mul r4.xyz, r3.xyzx, r0.wwww
+  mov r4.xyz, -r4.xyzx
+  add r4.xyz, r4.xyzx, v4.xyzx
+  dp3 r0.w, r4.xyzx, r4.xyzx
+  rsq r0.w, r0.w
+  mul r4.xyz, r0.wwww, r4.xyzx  // r4.x <- T.x; r4.y <- T.y; r4.z <- T.z
+
+#line 63
+  dp3 r0.w, v5.xyzx, r3.xyzx
+  mul r5.xyz, r3.xyzx, r0.wwww
+  mov r5.xyz, -r5.xyzx
+  add r5.xyz, r5.xyzx, v5.xyzx
+  dp3 r0.w, r5.xyzx, r5.xyzx
+  rsq r0.w, r0.w
+  mul r5.xyz, r0.wwww, r5.xyzx  // r5.x <- B.x; r5.y <- B.y; r5.z <- B.z
+
+#line 65
+  mov r6.x, r4.x  // r6.x <- TBN._m00
+  mov r6.y, r5.x  // r6.y <- TBN._m10
+  mov r6.z, r3.x  // r6.z <- TBN._m20
+  mov r7.x, r4.y  // r7.x <- TBN._m01
+  mov r7.y, r5.y  // r7.y <- TBN._m11
+  mov r7.z, r3.y  // r7.z <- TBN._m21
+  mov r3.x, r4.z  // r3.x <- TBN._m02
+  mov r3.y, r5.z  // r3.y <- TBN._m12
+  mov r3.z, r3.z  // r3.z <- TBN._m22
+
+#line 66
+  mov r0.w, l(1)
+  iadd r0.w, r0.w, r0.z
+  sample r4.xyz, v3.xyxx, T1[r0.w + 1].xyzw, S0[0]
+  mov r4.xyz, r4.xyzx  // r4.x <- normalMap.x; r4.y <- normalMap.y; r4.z <- normalMap.z
+
+#line 67
+  mul r4.xyz, r4.xyzx, l(2.000000, 2.000000, 2.000000, 0.000000)
+  mov r5.xyz, l(-1.000000,-1.000000,-1.000000,-0.000000)
+  add r4.xyz, r4.xyzx, r5.xyzx
+
+#line 68
+  dp3 r2.x, r4.xyzx, r6.xyzx
+  dp3 r2.y, r4.xyzx, r7.xyzx
+  dp3 r2.z, r4.xyzx, r3.xyzx
+
+#line 69
+endif 
+
+#line 72
+mov r3.xyz, -v1.xyzx
+add r3.xyz, r3.xyzx, CB1[1][24].xyzx
+dp3 r0.w, r3.xyzx, r3.xyzx
+rsq r0.w, r0.w
+mul r3.xyz, r0.wwww, r3.xyzx  // r3.x <- viewDir.x; r3.y <- viewDir.y; r3.z <- viewDir.z
+
+#line 73
+sample r4.xyz, v3.xyxx, T1[r0.z + 1].xyzw, S0[0]
+mov r4.xyz, r4.xyzx  // r4.x <- diffuse.x; r4.y <- diffuse.y; r4.z <- diffuse.z
+
+#line 75
+mov r0.y, -r0.y
+add r1.w, r0.y, l(1.000000)  // r1.w <- shininess
+
+#line 76
+mov r1.xyz, r1.xyzx  // r1.x <- mat.FresnelR0.x; r1.y <- mat.FresnelR0.y; r1.z <- mat.FresnelR0.z
+mov r1.w, r1.w  // r1.w <- mat.Shininess
+mov r4.xyz, r4.xyzx  // r4.x <- mat.DiffuseAlbedo.x; r4.y <- mat.DiffuseAlbedo.y; r4.z <- mat.DiffuseAlbedo.z
+
+#line 78
+mov r0.yzw, l(0,1.000000,1.000000,1.000000)  // r0.y <- shadowFactor.x; r0.z <- shadowFactor.y; r0.w <- shadowFactor.z
+
+#line 80
 nop 
 mov x0[0].xyz, CB1[1][28].xyzx
 mov x0[2].xyz, CB1[1][29].xyzx
-mov r3.xyzw, r3.xyzw
-mov r1.xyz, r1.xyzx
+mov r1.xyzw, r1.xyzw
+mov r4.xyz, r4.xyzx
 mov r2.xyz, r2.xyzx
+mov r3.xyz, r3.xyzx
 mov r0.yzw, r0.yyzw
 
-#line 79 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\inc\LightingUtils.hlsli"
+#line 87 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\inc\LightingUtils.hlsli"
 mov r5.xyz, l(0,0,0,0)  // r5.x <- result.x; r5.y <- result.y; r5.z <- result.z
 
-#line 84
+#line 92
 nop 
 mov r6.xyz, x0[0].xyzx
 mov r7.xyz, x0[2].xyzx
-mov r3.xyzw, r3.xyzw
-mov r1.xyz, r1.xyzx
+mov r1.xyzw, r1.xyzw
+mov r4.xyz, r4.xyzx
 mov r2.xyz, r2.xyzx
+mov r3.xyz, r3.xyzx
 
-#line 31
-dp3 r1.w, r7.xyzx, r7.xyzx
-rsq r1.w, r1.w
-mul r7.xyz, r1.wwww, r7.xyzx
+#line 38
+dp3 r2.w, r7.xyzx, r7.xyzx
+rsq r2.w, r2.w
+mul r7.xyz, r2.wwww, r7.xyzx
 mov r7.xyz, -r7.xyzx  // r7.x <- lightDir.x; r7.y <- lightDir.y; r7.z <- lightDir.z
 
-#line 32
-dp3 r1.w, r7.xyzx, r1.xyzx
-max r1.w, r1.w, l(0.000000)
-mul r8.xyz, r1.wwww, r6.xyzx  // r8.x <- diffuse.x; r8.y <- diffuse.y; r8.z <- diffuse.z
+#line 39
+dp3 r2.w, r7.xyzx, r2.xyzx
+max r2.w, r2.w, l(0.000000)
+mul r6.xyz, r2.wwww, r6.xyzx  // r6.x <- lightStrength.x; r6.y <- lightStrength.y; r6.z <- lightStrength.z
 
-#line 33
-mul r3.yzw, r3.yyzw, r8.xxyz
+#line 41
 nop 
 mov r6.xyz, r6.xyzx
 mov r7.xyz, r7.xyzx
-mov r1.xyz, r1.xyzx
 mov r2.xyz, r2.xyzx
-mov r3.x, r3.x
+mov r3.xyz, r3.xyzx
+mov r4.xyz, r4.xyzx
+mov r1.xyzw, r1.xyzw
 
 #line 16
-mul r1.w, r3.x, l(1024.000000)  // r1.w <- m
+mul r1.w, r1.w, l(1024.000000)  // r1.w <- m
 
 #line 17
-add r2.xyz, r7.xyzx, r2.xyzx
-dp3 r2.w, r2.xyzx, r2.xyzx
-rsq r2.w, r2.w
-mul r2.xyz, r2.wwww, r2.xyzx  // r2.x <- halfVec.x; r2.y <- halfVec.y; r2.z <- halfVec.z
+mov r8.xyz, -r3.xyzx
+dp3 r2.w, r8.xyzx, r2.xyzx
+add r2.w, r2.w, r2.w
+mov r2.w, -r2.w
+mul r9.xyz, r2.wwww, r2.xyzx
+add r8.xyz, r8.xyzx, r9.xyzx  // r8.x <- r.x; r8.y <- r.y; r8.z <- r.z
 
 #line 18
-mov r2.w, l(0.800000)  // r2.w <- specStrength
+sample r8.xyz, r8.xyzx, T0[0].xyzw, S0[0]
+mov r8.xyz, r8.xyzx  // r8.x <- reflectColor.x; r8.y <- reflectColor.y; r8.z <- reflectColor.z
 
 #line 19
-dp3 r1.x, r1.xyzx, r2.xyzx
-max r1.x, r1.x, l(0.000000)
-log r1.x, r1.x
-mul r1.x, r1.x, r1.w
-exp r1.x, r1.x
-mul r1.x, r2.w, r1.x
-mul r1.xyz, r6.xyzx, r1.xxxx  // r1.x <- specular.x; r1.y <- specular.y; r1.z <- specular.z
+nop 
 
 #line 20
-mov r1.xyz, r1.xyzx  // r1.x <- <BlinnPhong return value>.x; r1.y <- <BlinnPhong return value>.y; r1.z <- <BlinnPhong return value>.z
+add r3.xyz, r7.xyzx, r3.xyzx
+dp3 r2.w, r3.xyzx, r3.xyzx
+rsq r2.w, r2.w
+mul r3.xyz, r2.wwww, r3.xyzx  // r3.x <- halfVec.x; r3.y <- halfVec.y; r3.z <- halfVec.z
 
-#line 33
-add r1.xyz, r1.xyzx, r3.yzwy  // r1.x <- <ComputeDirectionalLight return value>.x; r1.y <- <ComputeDirectionalLight return value>.y; r1.z <- <ComputeDirectionalLight return value>.z
+#line 21
+mov r2.w, l(0.800000)  // r2.w <- specStrength
 
-#line 84
+#line 22
+dp3 r2.x, r2.xyzx, r3.xyzx
+max r2.x, r2.x, l(0.000000)
+log r2.x, r2.x
+mul r1.w, r1.w, r2.x
+exp r1.w, r1.w
+mul r1.w, r2.w, r1.w
+mul r2.xyz, r6.xyzx, r1.wwww  // r2.x <- specular.x; r2.y <- specular.y; r2.z <- specular.z
+
+#line 24
+mul r3.xyz, r4.xyzx, r6.xyzx
+mov r4.xyz, -r3.xyzx
+add r4.xyz, r4.xyzx, r8.xyzx
+mul r1.xyz, r1.xyzx, r4.xyzx
+add r1.xyz, r1.xyzx, r3.xyzx
+add r1.xyz, r2.xyzx, r1.xyzx  // r1.x <- <BlinnPhong return value>.x; r1.y <- <BlinnPhong return value>.y; r1.z <- <BlinnPhong return value>.z
+
+#line 41
+mov r1.xyz, r1.xyzx  // r1.x <- <ComputeDirectionalLight return value>.x; r1.y <- <ComputeDirectionalLight return value>.y; r1.z <- <ComputeDirectionalLight return value>.z
+
+#line 92
 mul r0.yzw, r0.yyzw, r1.xxyz
 add r0.yzw, r0.yyzw, r5.xxyz  // r0.y <- result.x; r0.z <- result.y; r0.w <- result.z
 
-#line 102
+#line 110
 mov r0.yzw, r0.yyzw  // r0.y <- <ComputeLighting return value>.x; r0.z <- <ComputeLighting return value>.y; r0.w <- <ComputeLighting return value>.z
 
-#line 62 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
+#line 80 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
 mov r0.yzw, r0.yyzw  // r0.y <- directLight.x; r0.z <- directLight.y; r0.w <- directLight.z
 
-#line 63
-add r0.yzw, r0.yyzw, r4.xxyz  // r0.y <- litColor.x; r0.z <- litColor.y; r0.w <- litColor.z
+#line 81
+mov r0.yzw, r0.yyzw  // r0.y <- litColor.x; r0.z <- litColor.y; r0.w <- litColor.z
 
-#line 65
+#line 83
 mov r0.x, r0.x  // r0.x <- litColor.w
 
-#line 67
+#line 85
 mov o0.xyz, r0.yzwy
 mov o0.w, r0.x
 ret 
-// Approximately 71 instruction slots used
+// Approximately 128 instruction slots used

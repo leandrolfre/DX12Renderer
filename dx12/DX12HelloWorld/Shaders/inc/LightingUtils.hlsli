@@ -14,10 +14,17 @@ float3 SchlickFresnel(float3 R0, float3 normal, float3 lightDir)
 float3 BlinnPhong(float3 lightStrength, float3 lightDir, float3 normal, float3 viewDir, Material mat)
 {
 	const float m = mat.Shininess * 1024.0f;
+	float3 r = reflect(-viewDir, normal);
+	float3 reflectColor = gCubeMap.Sample(gLinearSample, r).rgb;
+	float3 fresnelFactor = SchlickFresnel(mat.FresnelR0, normal, r);
 	float3 halfVec = normalize(viewDir+lightDir);
 	float specStrength = 0.8f;
 	float3 specular = pow(max(dot(normal, halfVec), 0.0f), m) * specStrength * lightStrength;
-	return specular;
+	//return (lightStrength * mat.DiffuseAlbedo.rgb + specular);
+	return lerp( lightStrength * mat.DiffuseAlbedo.rgb, reflectColor, mat.FresnelR0) + specular;
+	
+	
+	
 	/*float roughnessFactor = (m + 8.0f) * pow(max(dot(halfVec, normal), 0.0f), m) / 8.0f;
 	float3 fresnelFactor = SchlickFresnel(mat.FresnelR0, normal, lightDir);
 	float3 specAlbedo = fresnelFactor * roughnessFactor;
@@ -29,8 +36,9 @@ float3 BlinnPhong(float3 lightStrength, float3 lightDir, float3 normal, float3 v
 float3 ComputeDirectionalLight(Light light, Material mat, float3 normal, float3 viewDir)
 {
 	float3 lightDir = -normalize(light.Direction);
-	float3 diffuse = light.Strength * max(dot(lightDir, normal), 0.0f);
-	return (diffuse*mat.DiffuseAlbedo.rgb + BlinnPhong(light.Strength, lightDir, normal, viewDir, mat));
+	float3 lightStrength = light.Strength * max(dot(lightDir, normal), 0.0f);
+	
+	return BlinnPhong(lightStrength, lightDir, normal, viewDir, mat);
 }
 
 float3 ComputePointLight(Light light, Material mat, float3 pos, float3 normal, float3 viewDir)

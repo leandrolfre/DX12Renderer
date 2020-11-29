@@ -1,4 +1,5 @@
 #include "BlurFilter.h"
+#include "FrameResource.h"
 #include "../Common/Util.h"
 
 BlurFilter::BlurFilter(ID3D12Device* device, UINT width, UINT height, DXGI_FORMAT format) : mDevice{device}, mWidth{width}, mHeight{height}, mFormat{format}
@@ -42,17 +43,18 @@ void BlurFilter::BuildResources()
     ));
 }
 
-void BlurFilter::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle, UINT descriptorSize)
+void BlurFilter::BuildDescriptors(ShaderResourceBuffer* srBuffer)
+    //CD3DX12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle, UINT descriptorSize
 {
-    mBlur0CpuSrv = cpuDescriptorHandle;
-    mBlur0CpuUav = cpuDescriptorHandle.Offset(1, descriptorSize);
-    mBlur1CpuSrv = cpuDescriptorHandle.Offset(1, descriptorSize);
-    mBlur1CpuUav = cpuDescriptorHandle.Offset(1, descriptorSize);
+    mBlur0CpuSrv = srBuffer->CpuHandle();
+    mBlur0CpuUav = srBuffer->CpuHandle();
+    mBlur1CpuSrv = srBuffer->CpuHandle();
+    mBlur1CpuUav = srBuffer->CpuHandle();
 
-    mBlur0GpuSrv = gpuDescriptorHandle;
-    mBlur0GpuUav = gpuDescriptorHandle.Offset(1, descriptorSize);
-    mBlur1GpuSrv = gpuDescriptorHandle.Offset(1, descriptorSize);
-    mBlur1GpuUav = gpuDescriptorHandle.Offset(1, descriptorSize);;
+    mBlur0GpuSrv = srBuffer->GpuHandle();
+    mBlur0GpuUav = srBuffer->GpuHandle();
+    mBlur1GpuSrv = srBuffer->GpuHandle();
+    mBlur1GpuUav = srBuffer->GpuHandle();
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;

@@ -2,6 +2,7 @@
 
 #include<fstream>
 #include <windowsx.h>
+#include "../DX12HelloWorld/FrameResource.h"
 
 #if defined(CreateWindow)
 #undef CreateWindow
@@ -9,7 +10,6 @@
 
 D3DApp::D3DApp(HINSTANCE hInstance) : 
     mhInstance(hInstance),
-    mCbvSrvUavDescriptorSize(0), 
     mDsvDescriptorSize(0),
     mRtvDescriptorSize(0),
     mAllowTearing(false),
@@ -103,7 +103,6 @@ bool D3DApp::InitDirect3D()
     //Query heap size
     mDsvDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     mRtvDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    mCbvSrvUavDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     //Check Tearing support
     ComPtr<IDXGIFactory5> factory5;
@@ -225,28 +224,31 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 {
     //Create Heaps
-    D3D12_DESCRIPTOR_HEAP_DESC rtvDesc = {};
-    rtvDesc.NumDescriptors = mSwapChainBufferCount;
+    /*D3D12_DESCRIPTOR_HEAP_DESC rtvDesc = {};
+    rtvDesc.NumDescriptors = mSwapChainBufferCount * 2;
     rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvDesc.NodeMask = 0;
     rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
-    mDevice->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&mRtvHeap));
+    mDevice->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&mRtvHeap));*/
+
+    mRTBuffer = std::make_unique<ShaderResourceBuffer>(mDevice.Get(), mSwapChainBufferCount + 3, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
     D3D12_DESCRIPTOR_HEAP_DESC dsvDesc = {};
-    dsvDesc.NumDescriptors = 1;
-    rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    rtvDesc.NodeMask = 0;
-    rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    mDevice->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&mDsvHeap));
+    dsvDesc.NumDescriptors = mSwapChainBufferCount;
+    dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    dsvDesc.NodeMask = 0;
+    dsvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    mDevice->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(&mDsvHeap));
 
     //Create RTV
-    CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+    //CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
     for (int i = 0; i < mSwapChainBufferCount; ++i)
     {
         ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffers[i])));
-        mDevice->CreateRenderTargetView(mSwapChainBuffers[i].Get(), nullptr, handle);
-        handle.Offset(mRtvDescriptorSize);
+        mRTHandles[i] = mRTBuffer->CpuHandle();
+        mDevice->CreateRenderTargetView(mSwapChainBuffers[i].Get(), nullptr, mRTHandles[i]);
+       // handle.Offset(mRtvDescriptorSize);
     }
 
     D3D12_RESOURCE_DESC depthStencilDesc = { };
