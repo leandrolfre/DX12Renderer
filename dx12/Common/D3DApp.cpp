@@ -2,6 +2,9 @@
 
 #include<fstream>
 #include <windowsx.h>
+#include "RenderContext.h"
+#include "../DX12HelloWorld/ResourceManager.h"
+//TODO:FIX ME
 #include "../DX12HelloWorld/FrameResource.h"
 
 #if defined(CreateWindow)
@@ -12,11 +15,8 @@ D3DApp::D3DApp(HINSTANCE hInstance) :
     mhInstance(hInstance),
     mDsvDescriptorSize(0),
     mRtvDescriptorSize(0),
-    mAllowTearing(false),
     mFence(nullptr),
-    mDevice(nullptr),
     mCommandQueue(nullptr),
-    mDXGIFactory4(nullptr),
     mClientWidth(0),
     mClientHeight(0),
     mCurrentBufferIndex(0),
@@ -30,10 +30,7 @@ D3DApp::D3DApp(HINSTANCE hInstance) :
 
 D3DApp::~D3DApp()
 {
-    if (mDevice)
-    {
-        FlushCommandQueue();
-    }
+    FlushCommandQueue();
 }
 
 bool D3DApp::InitMainWindow(WNDPROC proc)
@@ -90,24 +87,17 @@ bool D3DApp::InitDirect3D()
         debugController->EnableDebugLayer();
     }
 #endif
-    ComPtr<IDXGIFactory1> dxgiFactory;
-    ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)));
-    ThrowIfFailed(dxgiFactory.As(&mDXGIFactory4));
 
-    //Create device
-    ThrowIfFailed(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&mDevice)));
+    RenderContext::Get().Init();
 
+    auto Device = RenderContext::Get().GetDevice();
     //Create Fence
-    ThrowIfFailed(mDevice->CreateFence(mFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
+    ThrowIfFailed(Device->CreateFence(mFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
+    mFence->SetName(L"Main Fence");
 
     //Query heap size
-    mDsvDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    mRtvDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-
-    //Check Tearing support
-    ComPtr<IDXGIFactory5> factory5;
-    ThrowIfFailed(dxgiFactory.As(&factory5));
-    factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &mAllowTearing, sizeof(mAllowTearing));
+    mDsvDescriptorSize = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    mRtvDescriptorSize = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
     CreateCommandObjects();
     CreateSwapChain();
@@ -118,21 +108,24 @@ bool D3DApp::InitDirect3D()
 
 void D3DApp::CreateCommandObjects()
 {
+    auto Device = RenderContext::Get().GetDevice();
+
     //Create Command Queue
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    mDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&mCommandQueue));
+    Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&mCommandQueue));
 
     //Create Command Allocator
-    mDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocator));
+    Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocator));
     //Create Command List
-    mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&mCommandList));
+    Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&mCommandList));
     mCommandList->Close();
 }
 
 void D3DApp::CreateSwapChain()
 {
+    auto DXGIFactory = RenderContext::Get().GetDXGIFactory();
     //Create swapchain
     mSwapChain.Reset();
 
@@ -147,13 +140,13 @@ void D3DApp::CreateSwapChain()
     swapChainDesc.BufferCount = mSwapChainBufferCount;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-    swapChainDesc.Flags = mAllowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+    swapChainDesc.Flags = RenderContext::Get().IsTearingAvailable() ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 ;
     ComPtr<IDXGISwapChain1> swapChain1;
-    ThrowIfFailed(mDXGIFactory4->CreateSwapChainForHwnd(mCommandQueue.Get(), mhMainWnd, &swapChainDesc, nullptr, nullptr, &swapChain1));
+    ThrowIfFailed(DXGIFactory->CreateSwapChainForHwnd(mCommandQueue.Get(), mhMainWnd, &swapChainDesc, nullptr, nullptr, &swapChain1));
     ThrowIfFailed(swapChain1.As(&mSwapChain));
 
-    ThrowIfFailed(mDXGIFactory4->MakeWindowAssociation(mhMainWnd, DXGI_MWA_NO_ALT_ENTER));
+    ThrowIfFailed(DXGIFactory->MakeWindowAssociation(mhMainWnd, DXGI_MWA_NO_ALT_ENTER));
 }
 
 int D3DApp::Run()
@@ -223,32 +216,14 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 {
-    //Create Heaps
-    /*D3D12_DESCRIPTOR_HEAP_DESC rtvDesc = {};
-    rtvDesc.NumDescriptors = mSwapChainBufferCount * 2;
-    rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    rtvDesc.NodeMask = 0;
-    rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-
-    mDevice->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&mRtvHeap));*/
-
-    mRTBuffer = std::make_unique<ShaderResourceBuffer>(mDevice.Get(), mSwapChainBufferCount + 3, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
-
-    D3D12_DESCRIPTOR_HEAP_DESC dsvDesc = {};
-    dsvDesc.NumDescriptors = mSwapChainBufferCount;
-    dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    dsvDesc.NodeMask = 0;
-    dsvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    mDevice->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(&mDsvHeap));
-
-    //Create RTV
-    //CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+    auto Device = RenderContext::Get().GetDevice();
+   
     for (int i = 0; i < mSwapChainBufferCount; ++i)
     {
         ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffers[i])));
-        mRTHandles[i] = mRTBuffer->CpuHandle();
-        mDevice->CreateRenderTargetView(mSwapChainBuffers[i].Get(), nullptr, mRTHandles[i]);
-       // handle.Offset(mRtvDescriptorSize);
+        mBackbufferHandles[i] = ResourceManager::Get().AllocRenderTargetResource();
+        Device->CreateRenderTargetView(mSwapChainBuffers[i].Get(), nullptr, mBackbufferHandles[i]);
+        mSwapChainBuffers[i]->SetName(L"SwapChain " + i);
     }
 
     D3D12_RESOURCE_DESC depthStencilDesc = { };
@@ -266,12 +241,13 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 
     D3D12_CLEAR_VALUE optClear;
     optClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    optClear.DepthStencil.Depth = 1;
+    optClear.DepthStencil.Depth = 1.0f;
     optClear.DepthStencil.Stencil = 0;
     auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    ThrowIfFailed(mDevice->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optClear, IID_PPV_ARGS(&mDepthStencilBuffer)));
-
-    mDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, mDsvHeap->GetCPUDescriptorHandleForHeapStart());
+    ThrowIfFailed(Device->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optClear, IID_PPV_ARGS(&mDepthStencilBuffer)));
+    mDepthStencilBuffer->SetName(L"Depth Stencil Buffer");
+    mDepthHandle = ResourceManager::Get().AllocDepthStencilResource();
+    Device->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, mDepthHandle);
 }
 
 std::wstring DxException::ToString() const
@@ -281,42 +257,6 @@ std::wstring DxException::ToString() const
     std::wstring msg = err.ErrorMessage();
 
     return FunctionName + L" failed in " + FileName + L"; line " + std::to_wstring(LineNumber) + L"; error: " + msg;
-}
-
-ComPtr<ID3D12Resource> D3DApp::CreateDefaultBuffer(const void* initData, UINT64 byteSize, ComPtr<ID3D12Resource>& uploadBuffer)
-{
-    ComPtr<ID3D12Resource> defaultBuffer;
-
-    ThrowIfFailed(mDevice->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(byteSize),
-        D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
-        IID_PPV_ARGS(defaultBuffer.GetAddressOf())
-        ));
-
-    ThrowIfFailed(mDevice->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(byteSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(uploadBuffer.GetAddressOf())
-    ));
-
-    D3D12_SUBRESOURCE_DATA subResourceData = {};
-    subResourceData.pData = initData;
-    subResourceData.RowPitch = byteSize;
-    subResourceData.SlicePitch = subResourceData.RowPitch;
-
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
-    UpdateSubresources<1>(mCommandList.Get(), defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
-
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ));
-
-    return defaultBuffer;
-
 }
 
 float D3DApp::AspectRatio() const

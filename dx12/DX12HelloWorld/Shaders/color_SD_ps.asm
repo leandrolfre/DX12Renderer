@@ -43,8 +43,10 @@
 //       float FalloffEnd;              // Offset:  476
 //       float3 Position;               // Offset:  480
 //       float SpotPower;               // Offset:  492
+//       float4x4 ShadowViewProj;       // Offset:  496
+//       float4x4 ShadowTransform;      // Offset:  560
 //
-//   } gLights[16];                     // Offset:  448 Size:   768
+//   } gLights[16];                     // Offset:  448 Size:  2816
 //
 // }
 //
@@ -73,7 +75,7 @@
 // ------------------------------ ---------- ------- ----------- ------- -------------- ------
 // gLinearSample                     sampler      NA          NA      S0             s0      1 
 // gCubeMap                          texture  float4        cube      T0             t0      1 
-// gMaterialMap                      texture  float4          2d      T1             t1      3 
+// gMaterialMap                      texture  float4          2d      T1             t2      3 
 // gMaterialData                     texture  struct         r/o      T2      t0,space1      1 
 // cbPerObject                       cbuffer      NA          NA     CB0            cb0      1 
 // cbPerPass                         cbuffer      NA          NA     CB1            cb1      1 
@@ -104,7 +106,7 @@ dcl_constantbuffer CB0[0:0][5], immediateIndexed, space=0
 dcl_constantbuffer CB1[1:1][30], immediateIndexed, space=0
 dcl_sampler S0[0:0], mode_default, space=0
 dcl_resource_texturecube (float,float,float,float) T0[0:0], space=0
-dcl_resource_texture2d (float,float,float,float) T1[1:3], space=0
+dcl_resource_texture2d (float,float,float,float) T1[2:4], space=0
 dcl_resource_structured T2[0:0], 48, space=1
 dcl_input_ps linear v1.xyz
 dcl_input_ps linear v2.xyz
@@ -177,7 +179,7 @@ if_nz r0.w
 #line 66
   mov r0.w, l(1)
   iadd r0.w, r0.w, r0.z
-  sample r4.xyz, v3.xyxx, T1[r0.w + 1].xyzw, S0[0]
+  sample r4.xyz, v3.xyxx, T1[r0.w + 2].xyzw, S0[0]
   mov r4.xyz, r4.xyzx  // r4.x <- normalMap.x; r4.y <- normalMap.y; r4.z <- normalMap.z
 
 #line 67
@@ -201,7 +203,7 @@ rsq r0.w, r0.w
 mul r3.xyz, r0.wwww, r3.xyzx  // r3.x <- viewDir.x; r3.y <- viewDir.y; r3.z <- viewDir.z
 
 #line 73
-sample r4.xyz, v3.xyxx, T1[r0.z + 1].xyzw, S0[0]
+sample r4.xyz, v3.xyxx, T1[r0.z + 2].xyzw, S0[0]
 mov r4.xyz, r4.xyzx  // r4.x <- diffuse.x; r4.y <- diffuse.y; r4.z <- diffuse.z
 
 #line 75

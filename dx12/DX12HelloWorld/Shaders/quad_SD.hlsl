@@ -1,4 +1,7 @@
-
+//#define MyRS1	"RootFlags( ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT ), " \
+//				"DescriptorTable( SRV(t0, numDescriptors = 1)), " \
+//				"StaticSampler(s0, " \
+//				"filter = FILTER_MIN_MAG_MIP_LINEAR )"
 
 struct VertexIn
 {
@@ -31,5 +34,9 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
 float4 PS(VertexOut pin) : SV_Target
 {
 	float4 diffuse = gScreenMap.Sample(gLinearSample, pin.TexCoord);
+	
+	float gamma = 1.0f/2.2f;
+	diffuse.rgb = pow(diffuse.rgb, float3(gamma, gamma, gamma));
+	
 	return diffuse;
 }

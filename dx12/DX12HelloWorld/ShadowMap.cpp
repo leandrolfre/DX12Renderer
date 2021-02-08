@@ -1,7 +1,9 @@
 #include "ShadowMap.h"
 #include "../Common/Util.h"
+#include "../Common/RenderContext.h"
+#include "ResourceManager.h"
 
-ShadowMap::ShadowMap(ID3D12Device* device, UINT width, UINT height) : mDevice(device), mWidth(width), mHeight(height)
+ShadowMap::ShadowMap(UINT width, UINT height) : mWidth(width), mHeight(height)
 {
     mViewport = 
     {   0.0f, 
@@ -33,13 +35,6 @@ D3D12_RECT ShadowMap::ScissorRect() const
     return mScissorRect;
 }
 
-void ShadowMap::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv, CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv)
-{
-    mHCpuSrv = hCpuSrv;
-    mHGpuSrv = hGpuSrv;
-    mHCpuDsv = hCpuDsv;
-    BuildDescriptors();
-}
 
 void ShadowMap::BuildDescriptors()
 {
@@ -51,14 +46,21 @@ void ShadowMap::BuildDescriptors()
     srvDesc.Texture2D.MostDetailedMip = 0;
     srvDesc.Texture2D.PlaneSlice = 0;
     srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-    mDevice->CreateShaderResourceView(mShadowMap.Get(), &srvDesc, mHCpuSrv);
 
     D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
     dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
     dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
     dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
     dsvDesc.Texture2D.MipSlice = 0;
-    mDevice->CreateDepthStencilView(mShadowMap.Get(), &dsvDesc, mHCpuDsv);
+
+    auto& ResourceManager = ResourceManager::Get();
+    mHCpuSrv = ResourceManager.AllocShaderResource();
+    mHGpuSrv = ResourceManager.AllocGPUShaderResource();
+    mHCpuDsv = ResourceManager.AllocDepthStencilResource();
+
+    auto Device = RenderContext::Get().GetDevice();
+    Device->CreateShaderResourceView(mShadowMap.Get(), &srvDesc, mHCpuSrv);
+    Device->CreateDepthStencilView(mShadowMap.Get(), &dsvDesc, mHCpuDsv);
 }
 
 void ShadowMap::BuildResource()
@@ -83,13 +85,16 @@ void ShadowMap::BuildResource()
     optClear.DepthStencil.Depth = 1.0f;
     optClear.DepthStencil.Stencil = 0;
 
-    ThrowIfFailed(mDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+    auto Device = RenderContext::Get().GetDevice();
+    ThrowIfFailed(Device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                                                    D3D12_HEAP_FLAG_NONE,
                                                    &texDesc,
                                                    D3D12_RESOURCE_STATE_GENERIC_READ,
                                                    &optClear,
                                                    IID_PPV_ARGS(&mShadowMap))
     );
+
+    BuildDescriptors();
 }
 
 UINT ShadowMap::Width() const
@@ -116,4 +121,3 @@ CD3DX12_CPU_DESCRIPTOR_HANDLE ShadowMap::Dsv() const
 {
     return mHCpuDsv;
 }
-

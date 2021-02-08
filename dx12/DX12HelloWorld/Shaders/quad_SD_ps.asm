@@ -31,17 +31,26 @@ dcl_sampler S0[0:0], mode_default, space=0
 dcl_resource_texture2d (float,float,float,float) T0[0:0], space=0
 dcl_input_ps linear v1.xy
 dcl_output o0.xyzw
-dcl_temps 1
+dcl_temps 2
 //
 // Initial variable locations:
 //   v0.x <- pin.PosH.x; v0.y <- pin.PosH.y; v0.z <- pin.PosH.z; v0.w <- pin.PosH.w; 
 //   v1.x <- pin.TexCoord.x; v1.y <- pin.TexCoord.y; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
-#line 33 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\quad_SD.hlsl"
+#line 36 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\quad_SD.hlsl"
 sample r0.xyzw, v1.xyxx, T0[0].xyzw, S0[0]  // r0.x <- diffuse.x; r0.y <- diffuse.y; r0.z <- diffuse.z; r0.w <- diffuse.w
 
-#line 34
-mov o0.xyzw, r0.xyzw
+#line 38
+mov r1.x, l(0.454545)  // r1.x <- gamma
+
+#line 39
+log r0.xyz, r0.xyzx
+mul r0.xyz, r0.xyzx, r1.xxxx
+exp r0.xyz, r0.xyzx  // r0.x <- diffuse.x; r0.y <- diffuse.y; r0.z <- diffuse.z
+
+#line 41
+mov o0.xyz, r0.xyzx
+mov o0.w, r0.w
 ret 
-// Approximately 3 instruction slots used
+// Approximately 8 instruction slots used

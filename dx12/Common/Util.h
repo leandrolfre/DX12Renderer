@@ -6,8 +6,6 @@
 #include <exception>
 #include <comdef.h>
 
-
-
 class DxException
 {
 public:

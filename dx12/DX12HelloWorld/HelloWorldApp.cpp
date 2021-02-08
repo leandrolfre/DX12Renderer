@@ -4,6 +4,10 @@
 
 #include "ImGui/imgui_impl_win32.h"
 #include "ImGui/imgui_impl_dx12.h"
+#include "../Common/RenderContext.h"
+#include "ResourceManager.h"
+#include "pix3.h"
+#include <algorithm>
 
 static const int gNumFrameResources = 3;
 
@@ -13,19 +17,26 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
     {
         return false;
     }
+
+    auto Device = RenderContext::Get().GetDevice();
     mCam.SetPosition(4.0f, 10.0f, -15.0f);
     mCam.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
-    mBlurFilter = std::make_unique<BlurFilter>(mDevice.Get(), mClientWidth, mClientHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
+
+    mShadowMap = std::make_unique<ShadowMap>(4096, 4096);
+
+    mSceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    mSceneBounds.Radius = sqrtf(10.0f * 10.0f + 15.0f * 15.0f);
+
+    //mBlurFilter = std::make_unique<BlurFilter>(Device, mClientWidth, mClientHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
     // Reset the command list to prep for initialization commands.
     ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 
     BuildRootSignature();
     BuildDescriptorHeaps();
     BuildShadersAndInputLayout();
-    BuildShapeGeometry();
     BuildTextures();
     BuildMaterials();
-    BuildRenderItems();
+    BuildScene();
     BuildFrameResources();
     BuildPSO();
 
@@ -35,7 +46,7 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
   
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(mhMainWnd);
-    ImGui_ImplDX12_Init(mDevice.Get(), 
+    ImGui_ImplDX12_Init(Device, 
                         gNumFrameResources,
                         DXGI_FORMAT_R8G8B8A8_UNORM,
                         mUISrvDescriptorHeap.Get(),
@@ -55,51 +66,16 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
 
 void D3DAppHelloWorld::BuildDescriptorHeaps()
 {
-    mSRBuffer = std::make_unique<ShaderResourceBuffer>(mDevice.Get(), 100, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
-
-    mBlurFilter->BuildDescriptors(mSRBuffer.get());
+    auto Device = RenderContext::Get().GetDevice();
+   // mBlurFilter->BuildDescriptors();
 
     D3D12_DESCRIPTOR_HEAP_DESC descUI = {};
     descUI.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descUI.NumDescriptors = 1;
     descUI.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    ThrowIfFailed(mDevice->CreateDescriptorHeap(&descUI, IID_PPV_ARGS(&mUISrvDescriptorHeap)));
+    ThrowIfFailed(Device->CreateDescriptorHeap(&descUI, IID_PPV_ARGS(&mUISrvDescriptorHeap)));
+    mUISrvDescriptorHeap->SetName(L"UI Descriptor Heap");
 
-}
-
-void D3DAppHelloWorld::BuildConstantBuffers()
-{
-    UINT objBufSize = ((sizeof(ObjectConstants) + 255) & ~255);
-    UINT passCBByteSize = ((sizeof(PassConstants) + 255) & ~255);
-    UINT objCount = mAllItems.size();
-    auto handleHeapStart = mCbvHeap->GetCPUDescriptorHandleForHeapStart();
-    for(int frameIdx = 0; frameIdx < gNumFrameResources; ++frameIdx)
-    {
-        auto passCB = mFrameResources[frameIdx]->PassCB->Resource();
-        auto passCBAddress = passCB->GetGPUVirtualAddress();
-        auto passHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(handleHeapStart, mPassCbvOffset + frameIdx, mSRBuffer->DescriptorHeapSize());
-
-        D3D12_CONSTANT_BUFFER_VIEW_DESC cbViewDesc;
-        cbViewDesc.BufferLocation = passCBAddress;
-        cbViewDesc.SizeInBytes = passCBByteSize;
-        mDevice->CreateConstantBufferView(&cbViewDesc, passHandle);
-
-        auto objCB = mFrameResources[frameIdx]->ObjectCB->Resource();
-
-        for(int i = 0; i < objCount; ++i)
-        {
-            D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objCB->GetGPUVirtualAddress();
-            cbAddress += i * objBufSize;
-            int heapIndex = frameIdx * objCount + i;
-
-            auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(handleHeapStart, heapIndex, mSRBuffer->DescriptorHeapSize());
-
-            D3D12_CONSTANT_BUFFER_VIEW_DESC cbViewDesc;
-            cbViewDesc.BufferLocation = cbAddress;
-            cbViewDesc.SizeInBytes = objBufSize;
-            mDevice->CreateConstantBufferView(&cbViewDesc, handle);
-        }
-    }
 }
 
 void CreateRootSignature(ComPtr<ID3D12Device2> Device, const CD3DX12_ROOT_SIGNATURE_DESC& RootSignatureDesc, ID3D12RootSignature** RootSignature)
@@ -119,29 +95,33 @@ void CreateRootSignature(ComPtr<ID3D12Device2> Device, const CD3DX12_ROOT_SIGNAT
 
 void D3DAppHelloWorld::BuildDefaultRootSignature()
 {
-    CD3DX12_DESCRIPTOR_RANGE range[2];
-    range[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
-    range[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 1, 0);
+    auto Device = RenderContext::Get().GetDevice();
+    CD3DX12_DESCRIPTOR_RANGE range[3];
+    range[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0); //cube
+    range[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0); //shadow
+    range[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 2, 0); //textures
 
-    CD3DX12_ROOT_PARAMETER slotRootParameter[5];
+    CD3DX12_ROOT_PARAMETER slotRootParameter[6];
     slotRootParameter[0].InitAsConstantBufferView(0); //Object
     slotRootParameter[1].InitAsConstantBufferView(1); //Pass
     slotRootParameter[2].InitAsShaderResourceView(0, 1); //Material
     slotRootParameter[3].InitAsDescriptorTable(1, &range[0], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
-    slotRootParameter[4].InitAsDescriptorTable(1, &range[1], D3D12_SHADER_VISIBILITY_PIXEL); //Textures
+    slotRootParameter[4].InitAsDescriptorTable(1, &range[1], D3D12_SHADER_VISIBILITY_PIXEL); //ShadowMap
+    slotRootParameter[5].InitAsDescriptorTable(1, &range[2], D3D12_SHADER_VISIBILITY_PIXEL); //Textures
 
 
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
     StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
     rootSigDesc.NumStaticSamplers = 1;
     rootSigDesc.pStaticSamplers = StaticSamplers;
 
-    CreateRootSignature(mDevice, rootSigDesc, mRootSignature.GetAddressOf());
+    CreateRootSignature(Device, rootSigDesc, mRootSignature.GetAddressOf());
 }
 
 void D3DAppHelloWorld::BuildBlurRootSignature()
 {
+    auto Device = RenderContext::Get().GetDevice();
     CD3DX12_DESCRIPTOR_RANGE blurRange[2];
     blurRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     blurRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
@@ -153,17 +133,18 @@ void D3DAppHelloWorld::BuildBlurRootSignature()
 
     CD3DX12_ROOT_SIGNATURE_DESC rootBlurSigDesc(3, slotBlurRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    CreateRootSignature(mDevice, rootBlurSigDesc, mPostProcessRootSignature.GetAddressOf());
+    CreateRootSignature(Device, rootBlurSigDesc, mPostProcessRootSignature.GetAddressOf());
 }
 
 void D3DAppHelloWorld::BuildScreenRootSignature()
 {
+    auto Device = RenderContext::Get().GetDevice();
     CD3DX12_DESCRIPTOR_RANGE table;
     table.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     
     CD3DX12_ROOT_PARAMETER rootParameter[2];
-    rootParameter[0].InitAsDescriptorTable(1, &table, D3D12_SHADER_VISIBILITY_PIXEL);
-    rootParameter[1].InitAsConstants(1, 0);
+    rootParameter[0].InitAsConstantBufferView(0); //Object
+    rootParameter[1].InitAsDescriptorTable(1, &table, D3D12_SHADER_VISIBILITY_PIXEL);
 
     CD3DX12_ROOT_SIGNATURE_DESC rootScreenSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
@@ -171,7 +152,7 @@ void D3DAppHelloWorld::BuildScreenRootSignature()
     rootScreenSigDesc.NumStaticSamplers = 1;
     rootScreenSigDesc.pStaticSamplers = StaticSamplers;
 
-    CreateRootSignature(mDevice, rootScreenSigDesc, mScreenRootSignature.GetAddressOf());
+    CreateRootSignature(Device, rootScreenSigDesc, mScreenRootSignature.GetAddressOf());
 }
 
 void D3DAppHelloWorld::BuildRootSignature()
@@ -192,6 +173,8 @@ void D3DAppHelloWorld::BuildShadersAndInputLayout()
 
     mQuadVsByteCode = LoadBinary("Shaders/quad_SD_vs.cso");
     mQuadPsByteCode = LoadBinary("Shaders/quad_SD_ps.cso");
+
+    mShadowVSByteCode = LoadBinary("Shaders/shadow_SD_vs.cso");
     UINT byteOffset = 0;
     mInputLayout =
     {
@@ -254,6 +237,7 @@ void D3DAppHelloWorld::BuildShadersAndInputLayout()
 
 void D3DAppHelloWorld::BuildPSO()
 {
+    auto Device = RenderContext::Get().GetDevice();
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
     ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 
@@ -272,11 +256,24 @@ void D3DAppHelloWorld::BuildPSO()
     psoDesc.SampleDesc.Quality = 0;
     psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
-    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowDesc = psoDesc;
+    shadowDesc.RasterizerState.DepthBias = 100000;
+    shadowDesc.RasterizerState.DepthBiasClamp = 0.0f;
+    shadowDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+    shadowDesc.pRootSignature = mRootSignature.Get();
+    shadowDesc.VS = { reinterpret_cast<BYTE*>(mShadowVSByteCode->GetBufferPointer()), mShadowVSByteCode->GetBufferSize() };
+    shadowDesc.PS = {};
+    shadowDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+    shadowDesc.NumRenderTargets = 0;
+
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&shadowDesc, IID_PPV_ARGS(&mPSOs["shadow_opaque"])));
+    
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = psoDesc;
     opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPsoDesc = psoDesc;
     skyPsoDesc.pRootSignature = mRootSignature.Get();
@@ -284,16 +281,17 @@ void D3DAppHelloWorld::BuildPSO()
     skyPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     skyPsoDesc.VS = { reinterpret_cast<BYTE*>(mSkyVsByteCode->GetBufferPointer()), mSkyVsByteCode->GetBufferSize() };
     skyPsoDesc.PS = { reinterpret_cast<BYTE*>(mSkyPsByteCode->GetBufferPointer()), mSkyPsByteCode->GetBufferSize() };
-    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC screenPsoDesc = psoDesc;
-    screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
+    //screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
     screenPsoDesc.RasterizerState.DepthClipEnable = false;
     screenPsoDesc.RasterizerState.DepthClipEnable = false;
+    screenPsoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
     screenPsoDesc.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
     screenPsoDesc.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
 
-    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&screenPsoDesc, IID_PPV_ARGS(&mPSOs["screen"])));
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&screenPsoDesc, IID_PPV_ARGS(&mPSOs["screen"])));
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC horizontalBlurDesc;
     ZeroMemory(&horizontalBlurDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
@@ -301,162 +299,66 @@ void D3DAppHelloWorld::BuildPSO()
     horizontalBlurDesc.CS = {reinterpret_cast<BYTE*>(mcsHorizontalByteCode->GetBufferPointer()), mcsHorizontalByteCode->GetBufferSize()};
     horizontalBlurDesc.NodeMask = 0;
     horizontalBlurDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-    ThrowIfFailed(mDevice->CreateComputePipelineState(&horizontalBlurDesc, IID_PPV_ARGS(&mPSOs["horzBlur"])));
+    ThrowIfFailed(Device->CreateComputePipelineState(&horizontalBlurDesc, IID_PPV_ARGS(&mPSOs["horzBlur"])));
     
     D3D12_COMPUTE_PIPELINE_STATE_DESC verticalBlurDesc = {};
     ZeroMemory(&verticalBlurDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
     verticalBlurDesc.pRootSignature = mPostProcessRootSignature.Get();
     verticalBlurDesc.CS = { reinterpret_cast<BYTE*>(mcsVerticalByteCode->GetBufferPointer()), mcsVerticalByteCode->GetBufferSize() };
     verticalBlurDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-    ThrowIfFailed(mDevice->CreateComputePipelineState(&verticalBlurDesc, IID_PPV_ARGS(&mPSOs["vertBlur"])));
+    ThrowIfFailed(Device->CreateComputePipelineState(&verticalBlurDesc, IID_PPV_ARGS(&mPSOs["vertBlur"])));
 }
 
 void D3DAppHelloWorld::BuildFrameResources()
 {
+    auto Device = RenderContext::Get().GetDevice();
+
     for(int i = 0; i < gNumFrameResources; ++i)
     {
-        mFrameResources.push_back(std::make_unique<FrameResource>(mDevice.Get(), 1, mAllItems.size(), mMaterials.size(), mClientWidth, mClientHeight, mBackBufferFormat, mSRBuffer.get(), mRTBuffer.get()));
+        mFrameResources.push_back(std::make_unique<FrameResource>(1, mClientWidth, mClientHeight, mBackBufferFormat));
     }
 }
 
-void D3DAppHelloWorld::BuildShapeGeometry()
+void D3DAppHelloWorld::BuildScene()
 {
     GeometryGenerator geoGen;
     //auto totalVertexCount = circle.Vertices.size() + grid.Vertices.size() + lightBox.Vertices.size();
-    
-    std::unordered_map<std::string, GeometryGenerator::MeshData> meshes = {
+
+    std::unordered_map<std::string, MeshData> meshes = {
         {"sphere", geoGen.CreateSphere(1, 500, 100) }
-       ,{"grid", geoGen.CreateGrid(20.0f, 30.0f, 60, 40)}
+       ,{"floor", geoGen.CreateGrid(20.0f, 30.0f, 60, 40)}
        ,{"lightBox", geoGen.CreateBox(5.0f, 5.0f, 5.0f, 1)}
-       ,{"screenQuad",geoGen.CreateQuad(-1.0f, 1.0f, 2.0f, 2.0f, 0.0f) }
     };
+
+    for (auto& meshData : meshes)
+    {
+        auto mesh = std::make_unique<Mesh>(meshData.second, mMaterials[meshData.first].get());
         
-    auto geo = std::make_unique<MeshGeometry>();
-    geo->Name = "shapeGeo";
-    std::vector<Vertex> vertices;
-    std::vector<uint16_t> indices;
-    UINT vertexOffset = 0;
-    UINT indexOffset = 0;
-    for (auto& e : meshes)
-    {
-        auto& mesh = e.second;
-
-        SubmeshGeometry submesh;
-        submesh.IndexCount = mesh.Indices32.size();
-        submesh.BaseVertexLocation = vertexOffset;
-        submesh.StartIndexLocation = indexOffset;
-
-        geo->DrawArgs[e.first] = submesh;
-
-        vertexOffset += e.second.Vertices.size();
-        indexOffset += e.second.Indices32.size();
-
-        for (size_t i = 0; i < mesh.Vertices.size(); ++i)
+        if (meshData.first == "sphere")
         {
-            Vertex v;
-            v.Pos = mesh.Vertices[i].Position;
-            v.Tangent = mesh.Vertices[i].TangentU;
-            v.Normal = mesh.Vertices[i].Normal;
-            v.Color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-            v.Tex0 = mesh.Vertices[i].TexC;
-
-            vertices.push_back(v);
+            XMStoreFloat4x4(&mesh->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 2.0f, 3.0f));
         }
-
-        indices.insert(indices.end(), std::begin(mesh.GetIndices16()), std::end(mesh.GetIndices16()));
-    }
-
-    const UINT vbByteSize = vertices.size() * sizeof(Vertex);
-    const UINT ibByteSize = indices.size() * sizeof(uint16_t);
-
-    ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-    CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-
-    ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-    CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-
-    geo->VertexBufferGPU = CreateDefaultBuffer(vertices.data(), vbByteSize, geo->VertexBufferUploader);
-    geo->IndexBufferGPU = CreateDefaultBuffer(indices.data(), ibByteSize, geo->IndexBufferUploader);
-
-    geo->VertexByteStride = sizeof(Vertex);
-    geo->VertexBufferByteSize = vbByteSize;
-    geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-    geo->IndexBufferByteSize = ibByteSize;
-
-    mGeometries[geo->Name] = std::move(geo);
-}
-
-void D3DAppHelloWorld::BuildRenderItems()
-{
-    UINT objIndex = 0;
-    std::unordered_map<std::string, std::string> geoMat = 
-    {
-        {"sphere", "sphere"}
-       ,{"grid", "floor"}
-       ,{"lightBox", "floor"}
-    };
-
-    for (auto& g : mGeometries["shapeGeo"]->DrawArgs)
-    {
-        if (g.first == "screenQuad") continue;
-        auto ri = std::make_unique<RenderItem>();;
-        ri->ObjCBIndex = objIndex++;
-        ri->Geo = mGeometries["shapeGeo"].get();
-        ri->Mat = mMaterials[geoMat[g.first]].get();
-        ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-
-        ri->IndexCount = g.second.IndexCount;
-        ri->StartIndexLocation = g.second.StartIndexLocation;
-        ri->BaseVertexLocation = g.second.BaseVertexLocation;
-
-        if (g.first == "sphere")
-        {
-            XMStoreFloat4x4(&ri->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 2.0f, 3.0f));
-        }
-        else if (g.first == "lightBox")
+        else if (meshData.first == "lightBox")
         {
             XMFLOAT3 lightPos;
             XMStoreFloat3(&lightPos, MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi));
-            XMStoreFloat4x4(&ri->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
-            mLightBox = ri.get();
+            XMStoreFloat4x4(&mesh->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
+            mLightBox = mesh.get();
         }
-        else
-        {
-            ri->World = MathHelper::Identity4x4();
-        }
-
-        mLayerRItems[(int)RenderLayer::Opaque].push_back(ri.get());
-        mAllItems.push_back(std::move(ri));
+        mesh->UploadData(mCommandList.Get());
+        mLayerRItems[(int)RenderLayer::Opaque].push_back(std::move(mesh));
     }
-    
-    auto skyRItem = std::make_unique<RenderItem>();
+
+    auto skyRItem = std::make_unique<Mesh>(meshes["sphere"], mMaterials["sky"].get());
     XMStoreFloat4x4(&skyRItem->World, XMMatrixScaling(50.0f, 50.0f, 50.0f));
-    
-    skyRItem->ObjCBIndex = objIndex++;
-    skyRItem->Geo = mGeometries["shapeGeo"].get();
-    skyRItem->Mat = mMaterials["sky"].get();
-    skyRItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    skyRItem->UploadData(mCommandList.Get());
+    mLayerRItems[(int)RenderLayer::Sky].push_back(std::move(skyRItem));
 
-    skyRItem->IndexCount = skyRItem->Geo->DrawArgs["sphere"].IndexCount;
-    skyRItem->StartIndexLocation = skyRItem->Geo->DrawArgs["sphere"].StartIndexLocation;
-    skyRItem->BaseVertexLocation = skyRItem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+    auto quadData = geoGen.CreateQuad(-1.0f, 1.0f, 2.0f, 2.0f, 0.0f);
+    auto fullscreenQuad = std::make_unique<Mesh>(quadData, nullptr);
+    fullscreenQuad->UploadData(mCommandList.Get());
 
-    mLayerRItems[(int)RenderLayer::Sky].push_back(skyRItem.get());
-    mAllItems.push_back(std::move(skyRItem));
-
-    auto screenQuad = std::make_unique<RenderItem>();
-    screenQuad->World = MathHelper::Identity4x4();;
-
-    screenQuad->ObjCBIndex = objIndex++;
-    screenQuad->Geo = mGeometries["shapeGeo"].get();
-    screenQuad->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-    screenQuad->Mat = nullptr;
-    screenQuad->IndexCount = screenQuad->Geo->DrawArgs["screenQuad"].IndexCount;
-    screenQuad->StartIndexLocation = screenQuad->Geo->DrawArgs["screenQuad"].StartIndexLocation;
-    screenQuad->BaseVertexLocation = screenQuad->Geo->DrawArgs["screenQuad"].BaseVertexLocation;
-
-    mLayerRItems[(int)RenderLayer::PostProcessing].push_back(screenQuad.get());
-    mAllItems.push_back(std::move(screenQuad));
+    mLayerRItems[int(RenderLayer::Fullscreen)].push_back(std::move(fullscreenQuad));
 }
 
 void D3DAppHelloWorld::BuildMaterials()
@@ -465,16 +367,25 @@ void D3DAppHelloWorld::BuildMaterials()
     floor->Name = "floor";
     floor->NumFramesDirty = gNumFrameResources;
     floor->MatCBIndex = 1;
-    floor->DiffuseAlbedo = XMFLOAT4(1.0f, 0.6f, 0.6f, 1.0f);
+    floor->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
     floor->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
     floor->Roughness = 0.05f;
     floor->DiffuseSrvHeapIndex = mTextures[2]->ID;
+
+    auto lightbox = std::make_unique<Material>();
+    lightbox->Name = "lightBox";
+    lightbox->NumFramesDirty = gNumFrameResources;
+    lightbox->MatCBIndex = 3;
+    lightbox->DiffuseAlbedo = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
+    lightbox->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+    lightbox->Roughness = 0.05f;
+    lightbox->DiffuseSrvHeapIndex = mTextures[2]->ID;
 
     auto sphere = std::make_unique<Material>();
     sphere->Name = "spheres";
     sphere->NumFramesDirty = gNumFrameResources;
     sphere->MatCBIndex = 0;
-    sphere->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+    sphere->DiffuseAlbedo = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
     sphere->FresnelR0 = XMFLOAT3(1.0f, 1.0f, 1.0f);
     sphere->Roughness = 0.05f;
     sphere->DiffuseSrvHeapIndex = mTextures[0]->ID;
@@ -484,23 +395,26 @@ void D3DAppHelloWorld::BuildMaterials()
     sky->Name = "sky";
     sky->NumFramesDirty = gNumFrameResources;
     sky->MatCBIndex = 2;
-    sky->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+    sky->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
     sky->FresnelR0 = XMFLOAT3(0.95f, 0.93f, 0.88f);
     sky->Roughness = 0.05f;
     sky->DiffuseSrvHeapIndex = mTextures[3]->ID;
     
     mMaterials["sphere"] = std::move(sphere);
     mMaterials["floor"] = std::move(floor);
+    mMaterials["lightBox"] = std::move(lightbox);
     mMaterials["sky"] = std::move(sky);
 }
 
 void D3DAppHelloWorld::BuildTextures()
 {
+    auto Device = RenderContext::Get().GetDevice();
+    auto& ResourceManager = ResourceManager::Get();
     std::vector<std::wstring> texPaths = { 
         L"Texture/pbr/beaten-up-metal1-albedo.dds",
         L"Texture/pbr/beaten-up-metal1-Normal-dx.dds",
         L"Texture/tile.dds",
-        L"Texture/grasscube1024.dds"
+        L"Texture/hsquareCM.dds"
     };
 
     for (int i = 0; i < texPaths.size(); ++i)
@@ -508,7 +422,7 @@ void D3DAppHelloWorld::BuildTextures()
         auto& texPath = texPaths[i];
         mTextures[i] = std::make_unique<Texture>();
         mTextures[i]->ID = i;
-        ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(mDevice.Get(), mCommandList.Get(), texPath.c_str(), mTextures[i]->Resource, mTextures[i]->UploadHeap));
+        ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(Device, mCommandList.Get(), texPath.c_str(), mTextures[i]->Resource, mTextures[i]->UploadHeap));
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -517,14 +431,21 @@ void D3DAppHelloWorld::BuildTextures()
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
         srvDesc.Format = mTextures[i]->Resource->GetDesc().Format;
+        
+        if (texPaths[i].find(L"Normal") == std::string::npos)
+        {
+            srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        }
+
         srvDesc.Texture2D.MipLevels = mTextures[i]->Resource->GetDesc().MipLevels;
 
         if (i == texPaths.size() - 1)
         {
             srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
         }
-        mTextures[i]->handle = mSRBuffer->GpuHandle();
-        mDevice->CreateShaderResourceView(mTextures[i]->Resource.Get(), &srvDesc, mSRBuffer->CpuHandle());
+        mTextures[i]->handle = ResourceManager.AllocGPUShaderResource();
+        auto srvHandle = ResourceManager.AllocShaderResource();
+        Device->CreateShaderResourceView(mTextures[i]->Resource.Get(), &srvDesc, srvHandle);
     }
 }
 
@@ -534,7 +455,7 @@ void D3DAppHelloWorld::UpdateMaterialCB()
     for (auto& e : mMaterials)
     {
         Material* mat = e.second.get();
-        if (mat->NumFramesDirty > 0)
+        if (mat && mat->NumFramesDirty > 0)
         {
             /*XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);*/
             MaterialConstants matConstants;
@@ -551,23 +472,6 @@ void D3DAppHelloWorld::UpdateMaterialCB()
     }
 }
 
-void D3DAppHelloWorld::UpdateObjectCBs()
-{
-    auto currObjectCB = mCurrentFrameResource->ObjectCB.get();
-    for (auto& item : mAllItems)
-    {
-        if (item->NumFramesDirty > 0)
-        {
-            XMMATRIX world = XMLoadFloat4x4(&item->World);
-            ObjectConstants objConstants;
-            XMStoreFloat4x4(&objConstants.World, world);
-            objConstants.MaterialIndex = item->Mat ? item->Mat->MatCBIndex : 0;
-            currObjectCB->CopyData(item->ObjCBIndex, objConstants);
-            item->NumFramesDirty--;
-        }
-    }
-}
-
 void D3DAppHelloWorld::UpdateMainPassCB()
 {
 
@@ -577,12 +481,35 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
     XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
     XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+    
     XMVECTOR lightDir = -MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi);
+    XMVECTOR lightPos = -2.0f*mSceneBounds.Radius*lightDir;
+    XMVECTOR targetPos = XMLoadFloat3(&mSceneBounds.Center);
+    XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
 
-    XMFLOAT3 lightPos;
-    XMStoreFloat3(&lightPos, MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi));
-    XMStoreFloat4x4(&mLightBox->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
-    mLightBox->NumFramesDirty = 3;
+    XMFLOAT3 sphereCenterLightSpace;
+    XMStoreFloat3(&sphereCenterLightSpace, XMVector3Transform(targetPos, lightView));
+
+    float l = sphereCenterLightSpace.x - mSceneBounds.Radius;
+    float b = sphereCenterLightSpace.y - mSceneBounds.Radius;
+    float n = sphereCenterLightSpace.z - mSceneBounds.Radius;
+    float r = sphereCenterLightSpace.x + mSceneBounds.Radius;
+    float t = sphereCenterLightSpace.y + mSceneBounds.Radius;
+    float f = sphereCenterLightSpace.z + mSceneBounds.Radius;
+
+    XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+
+    XMMATRIX T(
+        0.5f, 0.0f, 0.0f, 0.0f,
+        0.0f, -0.5f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.5f, 0.5f, 0.0f, 1.0f
+    );
+
+    XMMATRIX S = lightView * lightProj * T;
+    //XMStoreFloat4x4(&mLightBox->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos, lightPos.y * 7.0f, lightPos.z));
+    
     XMStoreFloat4x4(&mMainPassCB.View, view);
     XMStoreFloat4x4(&mMainPassCB.InvView, invView);
     XMStoreFloat4x4(&mMainPassCB.Proj, proj);
@@ -590,6 +517,8 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     XMStoreFloat4x4(&mMainPassCB.ViewProj, viewProj);
     XMStoreFloat4x4(&mMainPassCB.InvViewProj, invViewProj);
     XMStoreFloat3(&mMainPassCB.Lights[0].Direction, lightDir);
+    XMStoreFloat4x4(&mMainPassCB.Lights[0].ShadowViewProj, XMMatrixMultiply(lightView, lightProj));
+    XMStoreFloat4x4(&mMainPassCB.Lights[0].ShadowTransform, S);
 
     mMainPassCB.EyePosW = mCam.GetPosition3f();
     mMainPassCB.RenderTargetSize = XMFLOAT2(static_cast<float>(mClientWidth), static_cast<float>(mClientHeight));
@@ -605,25 +534,12 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     currPassCB->CopyData(0, mMainPassCB);
 }
 
-void D3DAppHelloWorld::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& rItems)
-{
-    UINT objCBByteSize = (sizeof(ObjectConstants) + 255) & ~255;
-    auto objectCB = mCurrentFrameResource->ObjectCB->Resource();
-    
-    for (auto i = 0; i < rItems.size(); ++i)
+void D3DAppHelloWorld::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<std::unique_ptr<Mesh>>& rItems)
+{   
+    auto objCB = mCurrentFrameResource->ObjectCB.get();
+    for (int i = 0; i < rItems.size(); ++i)
     {
-        auto ri = rItems[i];
-
-        cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-        cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-        cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
-
-        auto cbvIndex = ri->ObjCBIndex;
-        auto cbAddress = objectCB->GetGPUVirtualAddress();
-        cbAddress += (cbvIndex * objCBByteSize);
-
-        cmdList->SetGraphicsRootConstantBufferView(0, cbAddress);
-        cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+        rItems[i]->Draw(cmdList, objCB);
     }
 }
 
@@ -644,7 +560,6 @@ void D3DAppHelloWorld::Update()
         }
     }
 
-    UpdateObjectCBs();
     UpdateMaterialCB();
     UpdateMainPassCB();
 }
@@ -662,6 +577,8 @@ void D3DAppHelloWorld::Render()
         ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
     }
 
+    mCurrentFrameResource->ObjectCB->Reset();
+
     ////////// UI TEST /////////
      // Start the Dear ImGui frame
     ImGui_ImplDX12_NewFrame();
@@ -671,11 +588,10 @@ void D3DAppHelloWorld::Render()
     static int blurPasses = 1;
     static float reflective = mMaterials["sphere"]->FresnelR0.x;
     static float roughness = mMaterials["sphere"]->Roughness;
-    
     // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
     {
         ImGui::Begin("Test");                          // Create a window called "Hello, world!" and append into it.
-        ImGui::Checkbox("Blur", &mIsBlurEnabled);      // Edit bools storing our window open/close state
+        //ImGui::Checkbox("Blur", &mIsBlurEnabled);      // Edit bools storing our window open/close state
         ImGui::SliderInt("Blur Passes", &blurPasses, 1, 20);
         if (ImGui::SliderFloat("Reflection", &reflective, 0.0f, 1.0f))
         {
@@ -690,107 +606,28 @@ void D3DAppHelloWorld::Render()
             mMaterials["sphere"]->Roughness = roughness;
             mMaterials["sphere"]->NumFramesDirty = 3;
         }
+
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
     }
     ///////////////////////////
 
-    D3D12_VIEWPORT screenViewport = { 0.0f, 0.0f, static_cast<FLOAT>(mClientWidth), static_cast<FLOAT>(mClientHeight), 0.0f, 1.0f };
-    mCommandList->RSSetViewports(1, &screenViewport);
+    ShadowPass();
 
-    RECT scissorRect = { 0L, 0L, static_cast<LONG>(mClientWidth), static_cast<LONG>(mClientHeight) };
-    mCommandList->RSSetScissorRects(1, &scissorRect);
-
-    auto currentBackBuffer = mSwapChainBuffers[mCurrentBufferIndex].Get();
-    auto renderTargetView = mRTHandles[mCurrentBufferIndex];
-    auto depthStencilView = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
-
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->ScreenMap.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    // Transition the resource from its initial state to be used as a depth buffer.
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-                                                                           D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
-    float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    BeginRender();
     
-    mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
-    mCommandList->ClearRenderTargetView(mCurrentFrameResource->ScreenCpuRtv, clearColor, 0, nullptr);
-    mCommandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
-    mCommandList->OMSetRenderTargets(1, &mCurrentFrameResource->ScreenCpuRtv, true, &depthStencilView);
-
-    ID3D12DescriptorHeap* descriptorHeaps[] = { mSRBuffer->DescriptorHeap() };
-    mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-    mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-
-    //bind all materials
-    auto matCB = mCurrentFrameResource->MaterialCB->Resource();
-    mCommandList->SetGraphicsRootShaderResourceView(2, matCB->GetGPUVirtualAddress());
-
-    mCommandList->SetGraphicsRootDescriptorTable(3, mTextures[3]->handle);
-  
-    //bind all textures
-    mCommandList->SetGraphicsRootDescriptorTable(4, mTextures[0]->handle);
-
-    auto passCBVIndex = mPassCbvOffset + mCurrentFrameResourceIndex;
-    auto passCB = mCurrentFrameResource->PassCB->Resource();
-    mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
-
-    mCommandList->SetPipelineState(mPSOs["opaque"].Get());
-    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
-
-    mCommandList->SetPipelineState(mPSOs["sky"].Get());
-    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
-
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->ScreenMap.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-                                                                            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON));
-    mCommandList->OMSetRenderTargets(1, &renderTargetView, true, nullptr);
-    mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-    mCommandList->SetGraphicsRootSignature(mScreenRootSignature.Get());
-    mCommandList->SetPipelineState(mPSOs["screen"].Get());
-    mCommandList->SetGraphicsRootDescriptorTable(0, mCurrentFrameResource->ScreenGpuSrv);
-
-    //////////////////////////////////////////////////////////////////////////////////////////
-     //TODO:Encapsulate this. Each object should know how to bind and draw itself   
-     auto ri = mLayerRItems[(int)RenderLayer::PostProcessing][0];
-     mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-     mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-     mCommandList->IASetPrimitiveTopology(ri->PrimitiveType);
-
-     mCommandList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+    BasePass();
     
-    /////////////////////////////////////////////////////////////////////////////////////////
-    if (mIsBlurEnabled)
-    {
-        mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
-                             mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), currentBackBuffer, blurPasses);
-
-        //// Transition to PRESENT state.
-        mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT));
-    }
-    else
-    {
-
-        mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
-    }
-
-    //TODO: These calls cannot be here. Improve That!!!! *See logs
+    //postprocessingPipeline.run();
+    
+    CompositePass();
+    
+    ID3D12DescriptorHeap* UIDescriptorHeaps[] = { mUISrvDescriptorHeap.Get() };
+    mCommandList->SetDescriptorHeaps(_countof(UIDescriptorHeaps), UIDescriptorHeaps);
     ImGui::Render();
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 
-    ThrowIfFailed(mCommandList->Close());
-
-    ID3D12CommandList* commandLists[] = { mCommandList.Get() };
-
-    mCommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-
-    mSwapChain->Present(0, mAllowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
-    ///////////////////////////////////////////////////////////////////////////////
-    mCurrentFrameResource->Fence = ++mFenceValue;
-    ThrowIfFailed(mCommandQueue->Signal(mFence.Get(), mFenceValue));
-    mCurrentBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
-    ////////////////////////////////////////////////////////////////////////////////
+    EndRender();
 }
 
 void D3DAppHelloWorld::OnKeyboardInput()
@@ -830,6 +667,115 @@ void D3DAppHelloWorld::OnKeyboardInput()
         
     mSunPhi = MathHelper::Clamp(mSunPhi, 0.1f, XM_PIDIV2);
     mCam.UpdateViewMatrix();
+}
+
+void D3DAppHelloWorld::BasePass()
+{
+    PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Base Pass");
+    mCommandList->OMSetRenderTargets(1, &mCurrentFrameResource->RT[0]->CpuRtv, true, &mDepthHandle);
+
+    ID3D12DescriptorHeap* descriptorHeaps[] = { ResourceManager::Get().DescriptorHeaps()/*, mUISrvDescriptorHeap.Get()*/ };
+    mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+    mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+    //bind all materials
+    auto matCB = mCurrentFrameResource->MaterialCB->Resource();
+    mCommandList->SetGraphicsRootShaderResourceView(2, matCB->GetGPUVirtualAddress());
+
+    mCommandList->SetGraphicsRootDescriptorTable(3, mTextures[3]->handle);
+
+    mCommandList->SetGraphicsRootDescriptorTable(4, mShadowMap->Srv());
+
+    //bind all textures
+    mCommandList->SetGraphicsRootDescriptorTable(5, mTextures[0]->handle);
+
+    auto passCB = mCurrentFrameResource->PassCB->Resource();
+    mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+
+    mCommandList->SetPipelineState(mPSOs["opaque"].Get());
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
+
+    mCommandList->SetPipelineState(mPSOs["sky"].Get());
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
+
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
+                                                                           D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON));
+    PIXEndEvent();
+}
+
+void D3DAppHelloWorld::CompositePass()
+{
+    PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Composite Pass");
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+    mCommandList->SetGraphicsRootSignature(mScreenRootSignature.Get());
+    mCommandList->SetPipelineState(mPSOs["screen"].Get());
+    mCommandList->SetGraphicsRootDescriptorTable(1, mCurrentFrameResource->RT[0]->GpuSrv);
+    mCommandList->OMSetRenderTargets(1, &mBackbufferHandles[mCurrentBufferIndex], true, nullptr);
+
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Fullscreen]);
+    PIXEndEvent();
+}
+
+void D3DAppHelloWorld::ShadowPass()
+{
+    PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Shadow Pass");
+    mCommandList->RSSetViewports(1, &mShadowMap->Viewport());
+    mCommandList->RSSetScissorRects(1, &mShadowMap->ScissorRect());
+
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+    mCommandList->ClearDepthStencilView(mShadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    mCommandList->OMSetRenderTargets(0, nullptr, false, &mShadowMap->Dsv());
+    mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+    auto passCB = mCurrentFrameResource->PassCB->Resource();
+    mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+    mCommandList->SetPipelineState(mPSOs["shadow_opaque"].Get());
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
+
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
+    PIXEndEvent();
+}
+
+void D3DAppHelloWorld::BeginRender()
+{
+    auto currentBackBuffer = mSwapChainBuffers[mCurrentBufferIndex].Get();
+    auto renderTargetView = mBackbufferHandles[mCurrentBufferIndex];
+    auto depthStencilView = mDepthHandle;
+    float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    D3D12_VIEWPORT screenViewport = { 0.0f, 0.0f, static_cast<FLOAT>(mClientWidth), static_cast<FLOAT>(mClientHeight), 0.0f, 1.0f };
+    mCommandList->RSSetViewports(1, &screenViewport);
+
+    RECT scissorRect = { 0L, 0L, static_cast<LONG>(mClientWidth), static_cast<LONG>(mClientHeight) };
+    mCommandList->RSSetScissorRects(1, &scissorRect);
+
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    // Transition the resource from its initial state to be used as a depth buffer.
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
+                                                                           D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+
+    mCommandList->ClearRenderTargetView(mCurrentFrameResource->RT[0]->CpuRtv, clearColor, 0, nullptr);
+    mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
+    mCommandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+}
+
+void D3DAppHelloWorld::EndRender()
+{
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffers[mCurrentBufferIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+
+    ThrowIfFailed(mCommandList->Close());
+
+    ID3D12CommandList* commandLists[] = { mCommandList.Get() };
+
+    mCommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+    mSwapChain->Present(0, RenderContext::Get().IsTearingAvailable() ? DXGI_PRESENT_ALLOW_TEARING : 0);
+
+    mCurrentFrameResource->Fence = ++mFenceValue;
+    ThrowIfFailed(mCommandQueue->Signal(mFence.Get(), mFenceValue));
+    mCurrentBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
 }
 
 void D3DAppHelloWorld::OnMouseMove(WPARAM	btnState, int x, int y)

@@ -2,29 +2,20 @@
 
 #include "../Common/D3DApp.h"
 #include "FrameResource.h"
-#include "RenderItem.h"
 #include "BlurFilter.h"
 #include <unordered_map>
 #include "Camera.h"
+#include "Mesh.h"
+#include "ShadowMap.h"
 
 using namespace DirectX;
-
-struct Vertex
-{
-	XMFLOAT3 Pos; //12
-	XMFLOAT3 Tangent; //12
-	XMFLOAT3 Normal; //12
-	XMFLOAT2 Tex0; //8
-	XMFLOAT2 Tex1; //8
-	XMFLOAT4 Color; //16
-};
 
 enum class RenderLayer
 {
 	Opaque,
 	Transparent,
 	Sky,
-	PostProcessing,
+	Fullscreen,
 	RenderLayerCount
 };
 
@@ -35,8 +26,7 @@ public:
 	{};
 	~D3DAppHelloWorld() 
 	{
-		if (mDevice != nullptr)
-			FlushCommandQueue();
+		FlushCommandQueue();
 	};
 	D3DAppHelloWorld(const D3DAppHelloWorld& rhs) = delete;
 	D3DAppHelloWorld& operator=(const D3DAppHelloWorld& rhs) = delete;
@@ -50,7 +40,6 @@ protected:
 
 private:
 	void BuildDescriptorHeaps();
-	void BuildConstantBuffers();
 	void BuildRootSignature();
 	void BuildDefaultRootSignature();
 	void BuildBlurRootSignature();
@@ -58,15 +47,18 @@ private:
 	void BuildShadersAndInputLayout();
 	void BuildPSO();
 	void BuildFrameResources();
-	void UpdateObjectCBs();
 	void UpdateMainPassCB();
 	void UpdateMaterialCB();
-	void BuildShapeGeometry();
-	void BuildRenderItems();
-	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& rItems);
+	void BuildScene();
+	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<std::unique_ptr<Mesh>>& rItems);
 	void BuildMaterials();
 	void BuildTextures();
 	void OnKeyboardInput();
+	void BasePass();
+	void CompositePass();
+	void ShadowPass();
+	void BeginRender();
+	void EndRender();
 
 private:
 	PassConstants mMainPassCB;
@@ -74,16 +66,13 @@ private:
 	XMFLOAT2 mLastMousePos = {0.0f, 0.0f};
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
-	std::vector<std::unique_ptr<RenderItem>> mAllItems;
-	std::vector<RenderItem*> mLayerRItems[(int)RenderLayer::RenderLayerCount];
-	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
+	std::vector<std::unique_ptr<Mesh>> mLayerRItems[(int)RenderLayer::RenderLayerCount];
 	std::unordered_map < std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<int, std::unique_ptr<Texture>> mTextures;
 	ComPtr<ID3D12RootSignature> mRootSignature;
 	ComPtr<ID3D12RootSignature> mPostProcessRootSignature;
 	ComPtr<ID3D12RootSignature> mScreenRootSignature;
-	ComPtr<ID3D12DescriptorHeap> mCbvHeap;
 	ComPtr<ID3D12DescriptorHeap> mUISrvDescriptorHeap;
 	ComPtr<ID3DBlob> mvsByteCode;
 	ComPtr<ID3DBlob> mpsByteCode;
@@ -93,14 +82,14 @@ private:
 	ComPtr<ID3DBlob> mSkyPsByteCode;
 	ComPtr<ID3DBlob> mQuadVsByteCode;
 	ComPtr<ID3DBlob> mQuadPsByteCode;
-	std::unique_ptr<BlurFilter> mBlurFilter;
+	ComPtr<ID3DBlob> mShadowVSByteCode;
+	std::unique_ptr<ShadowMap> mShadowMap;
 	FrameResource* mCurrentFrameResource = nullptr;
-	RenderItem* mLightBox;
-	std::unique_ptr<ShaderResourceBuffer> mSRBuffer;
+	Mesh* mLightBox;
+	BoundingSphere mSceneBounds;
 	UINT mCurrentFrameResourceIndex = 0;
 	int mPassCbvOffset = 0;
 	bool mIsWireframe = false;
-	bool mIsBlurEnabled = false;
 	float mSunTheta = 1.25f * XM_PI;
 	float mSunPhi = XM_PIDIV4;
 };

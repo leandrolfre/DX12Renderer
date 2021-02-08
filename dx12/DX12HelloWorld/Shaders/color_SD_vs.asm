@@ -43,8 +43,10 @@
 //       float FalloffEnd;              // Offset:  476
 //       float3 Position;               // Offset:  480
 //       float SpotPower;               // Offset:  492
+//       float4x4 ShadowViewProj;       // Offset:  496
+//       float4x4 ShadowTransform;      // Offset:  560
 //
-//   } gLights[16];                     // Offset:  448 Size:   768 [unused]
+//   } gLights[16];                     // Offset:  448 Size:  2816 [unused]
 //
 // }
 //
