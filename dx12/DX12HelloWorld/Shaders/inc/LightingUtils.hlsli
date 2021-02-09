@@ -21,9 +21,7 @@ float3 BlinnPhong(float3 lightStrength, float3 lightDir, float3 normal, float3 v
 	float specStrength = 0.8f;
 	float3 specular = pow(max(dot(normal, halfVec), 0.0f), m) * specStrength * lightStrength;
 	//return (lightStrength * mat.DiffuseAlbedo.rgb + specular);
-	return lerp( lightStrength * mat.DiffuseAlbedo.rgb, reflectColor, mat.FresnelR0) + specular;
-	
-	
+	return lerp(lightStrength * mat.DiffuseAlbedo.rgb, reflectColor, mat.FresnelR0) + specular;
 	
 	/*float roughnessFactor = (m + 8.0f) * pow(max(dot(halfVec, normal), 0.0f), m) / 8.0f;
 	float3 fresnelFactor = SchlickFresnel(mat.FresnelR0, normal, lightDir);
@@ -35,7 +33,7 @@ float3 BlinnPhong(float3 lightStrength, float3 lightDir, float3 normal, float3 v
 
 float3 ComputeDirectionalLight(Light light, Material mat, float3 normal, float3 viewDir)
 {
-	float3 lightDir = -normalize(light.Direction);
+	float3 lightDir = normalize(light.Direction);
 	float3 lightStrength = light.Strength * max(dot(lightDir, normal), 0.0f);
 	
 	return BlinnPhong(lightStrength, lightDir, normal, viewDir, mat);
@@ -82,7 +80,7 @@ float3 ComputeSpotLight(Light light, Material mat, float3 pos, float3 normal, fl
 	return BlinnPhong(lightStrength, lightDir, normal, viewDir, mat);
 }
 
-float4 ComputeLighting(Light gLights[MaxLights], Material mat, float3 pos, float3 normal, float3 viewDir, float3 shadowFactor)
+float4 ComputeLighting(Light gLights[MaxLights], Material mat, float3 pos, float3 normal, float3 viewDir, float shadowFactor)
 {
 	float3 result = 0.0f;
 	int i = 0;
@@ -108,4 +106,30 @@ float4 ComputeLighting(Light gLights[MaxLights], Material mat, float3 pos, float
 	#endif
 	
 	return float4(result, 0.0f);
+}
+
+float CalcShadowFactor(float4 shadowPosH)
+{
+	shadowPosH.xyz / shadowPosH.w;
+
+	float depth = shadowPosH.z;
+	uint width, height, numMips;
+	gShadowMap.GetDimensions(0, width, height, numMips);
+
+	float dx = 1.0f / (float)width;
+	float dy = 1.0f / (float)height;
+	const int offsetSampleNum = 9;
+	const float2 offsets[offsetSampleNum] = {
+		float2(-dx, -dy), float2(0.0f, -dy), float2(dx, -dy),
+		float2(-dx, 0.0f), float2(0.0f, 0.0f), float2(dx, 0.0f),
+		float2(-dx, dy), float2(0.0f, dy), float2(dx, dy)
+	};
+
+	float pcf = 0.0f;
+	[unroll]
+	for (int i = 0; i < offsetSampleNum; ++i)
+	{
+		pcf += gShadowMap.SampleCmpLevelZero(gShadowSample, shadowPosH.xy + offsets[i], depth).r;
+	}
+	return pcf / (float)offsetSampleNum;
 }

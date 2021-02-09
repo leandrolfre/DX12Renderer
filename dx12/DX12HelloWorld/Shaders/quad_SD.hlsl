@@ -35,8 +35,8 @@ float4 PS(VertexOut pin) : SV_Target
 {
 	float4 diffuse = gScreenMap.Sample(gLinearSample, pin.TexCoord);
 	
-	float gamma = 1.0f/2.2f;
-	diffuse.rgb = pow(diffuse.rgb, float3(gamma, gamma, gamma));
+	float gamma = 2.2f;
+	diffuse.rgb = pow(diffuse.rgb, float3(1.0f/gamma, 1.0f / gamma, 1.0f / gamma));
 	
 	return diffuse;
 }

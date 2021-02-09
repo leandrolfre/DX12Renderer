@@ -31,7 +31,7 @@ dcl_sampler S0[0:0], mode_default, space=0
 dcl_resource_texture2d (float,float,float,float) T0[0:0], space=0
 dcl_input_ps linear v1.xy
 dcl_output o0.xyzw
-dcl_temps 2
+dcl_temps 3
 //
 // Initial variable locations:
 //   v0.x <- pin.PosH.x; v0.y <- pin.PosH.y; v0.z <- pin.PosH.z; v0.w <- pin.PosH.w; 
@@ -42,15 +42,18 @@ dcl_temps 2
 sample r0.xyzw, v1.xyxx, T0[0].xyzw, S0[0]  // r0.x <- diffuse.x; r0.y <- diffuse.y; r0.z <- diffuse.z; r0.w <- diffuse.w
 
 #line 38
-mov r1.x, l(0.454545)  // r1.x <- gamma
+mov r1.x, l(2.200000)  // r1.x <- gamma
 
 #line 39
+div r2.x, l(1.000000), r1.x
+div r2.y, l(1.000000), r1.x
+div r2.z, l(1.000000), r1.x
 log r0.xyz, r0.xyzx
-mul r0.xyz, r0.xyzx, r1.xxxx
+mul r0.xyz, r0.xyzx, r2.xyzx
 exp r0.xyz, r0.xyzx  // r0.x <- diffuse.x; r0.y <- diffuse.y; r0.z <- diffuse.z
 
 #line 41
 mov o0.xyz, r0.xyzx
 mov o0.w, r0.w
 ret 
-// Approximately 8 instruction slots used
+// Approximately 11 instruction slots used

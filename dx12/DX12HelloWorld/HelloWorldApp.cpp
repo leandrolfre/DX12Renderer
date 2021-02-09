@@ -99,7 +99,7 @@ void D3DAppHelloWorld::BuildDefaultRootSignature()
     CD3DX12_DESCRIPTOR_RANGE range[3];
     range[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0); //cube
     range[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0); //shadow
-    range[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 2, 0); //textures
+    range[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 2, 0); //textures
 
     CD3DX12_ROOT_PARAMETER slotRootParameter[6];
     slotRootParameter[0].InitAsConstantBufferView(0); //Object
@@ -111,9 +111,16 @@ void D3DAppHelloWorld::BuildDefaultRootSignature()
 
 
     CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
+    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2];
     StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
-    rootSigDesc.NumStaticSamplers = 1;
+    StaticSamplers[1].Init(1,
+                           D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                           0.0f, 16, D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                           D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+    rootSigDesc.NumStaticSamplers = 2;
     rootSigDesc.pStaticSamplers = StaticSamplers;
 
     CreateRootSignature(Device, rootSigDesc, mRootSignature.GetAddressOf());
@@ -261,7 +268,7 @@ void D3DAppHelloWorld::BuildPSO()
     D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowDesc = psoDesc;
     shadowDesc.RasterizerState.DepthBias = 100000;
     shadowDesc.RasterizerState.DepthBiasClamp = 0.0f;
-    shadowDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+    shadowDesc.RasterizerState.SlopeScaledDepthBias = 5.0f;
     shadowDesc.pRootSignature = mRootSignature.Get();
     shadowDesc.VS = { reinterpret_cast<BYTE*>(mShadowVSByteCode->GetBufferPointer()), mShadowVSByteCode->GetBufferSize() };
     shadowDesc.PS = {};
@@ -284,7 +291,7 @@ void D3DAppHelloWorld::BuildPSO()
     ThrowIfFailed(Device->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC screenPsoDesc = psoDesc;
-    //screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
+    screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
     screenPsoDesc.RasterizerState.DepthClipEnable = false;
     screenPsoDesc.RasterizerState.DepthClipEnable = false;
     screenPsoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
@@ -326,7 +333,7 @@ void D3DAppHelloWorld::BuildScene()
 
     std::unordered_map<std::string, MeshData> meshes = {
         {"sphere", geoGen.CreateSphere(1, 500, 100) }
-       ,{"floor", geoGen.CreateGrid(20.0f, 30.0f, 60, 40)}
+       ,{"floor", geoGen.CreateGrid(20.0f, 30.0f, 2, 2)}
        ,{"lightBox", geoGen.CreateBox(5.0f, 5.0f, 5.0f, 1)}
     };
 
@@ -336,7 +343,7 @@ void D3DAppHelloWorld::BuildScene()
         
         if (meshData.first == "sphere")
         {
-            XMStoreFloat4x4(&mesh->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 2.0f, 3.0f));
+            XMStoreFloat4x4(&mesh->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.0f, 3.0f));
         }
         else if (meshData.first == "lightBox")
         {
@@ -371,6 +378,7 @@ void D3DAppHelloWorld::BuildMaterials()
     floor->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
     floor->Roughness = 0.05f;
     floor->DiffuseSrvHeapIndex = mTextures[2]->ID;
+    floor->hasNormalMap = 0;
 
     auto lightbox = std::make_unique<Material>();
     lightbox->Name = "lightBox";
@@ -398,7 +406,8 @@ void D3DAppHelloWorld::BuildMaterials()
     sky->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
     sky->FresnelR0 = XMFLOAT3(0.95f, 0.93f, 0.88f);
     sky->Roughness = 0.05f;
-    sky->DiffuseSrvHeapIndex = mTextures[3]->ID;
+    sky->DiffuseSrvHeapIndex = mTextures[4]->ID;
+    sky->hasNormalMap = 0;
     
     mMaterials["sphere"] = std::move(sphere);
     mMaterials["floor"] = std::move(floor);
@@ -413,7 +422,8 @@ void D3DAppHelloWorld::BuildTextures()
     std::vector<std::wstring> texPaths = { 
         L"Texture/pbr/beaten-up-metal1-albedo.dds",
         L"Texture/pbr/beaten-up-metal1-Normal-dx.dds",
-        L"Texture/tile.dds",
+        L"Texture/bricks2.dds",
+        L"Texture/bricks2_nmap.dds",
         L"Texture/hsquareCM.dds"
     };
 
@@ -432,9 +442,9 @@ void D3DAppHelloWorld::BuildTextures()
 
         srvDesc.Format = mTextures[i]->Resource->GetDesc().Format;
         
-        if (texPaths[i].find(L"Normal") == std::string::npos)
+        if (texPaths[i].find(L"hsquareCM") != std::string::npos)
         {
-            srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+           srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         }
 
         srvDesc.Texture2D.MipLevels = mTextures[i]->Resource->GetDesc().MipLevels;
@@ -482,8 +492,8 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
     XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
     
-    XMVECTOR lightDir = -MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi);
-    XMVECTOR lightPos = -2.0f*mSceneBounds.Radius*lightDir;
+    XMVECTOR lightDir = MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi);
+    XMVECTOR lightPos = 2.0f*mSceneBounds.Radius*lightDir;
     XMVECTOR targetPos = XMLoadFloat3(&mSceneBounds.Center);
     XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
@@ -599,6 +609,11 @@ void D3DAppHelloWorld::Render()
             mMaterials["sphere"]->FresnelR0.y = reflective;
             mMaterials["sphere"]->FresnelR0.z = reflective;
             mMaterials["sphere"]->NumFramesDirty = 3;
+
+            mMaterials["floor"]->FresnelR0.x = reflective;
+            mMaterials["floor"]->FresnelR0.y = reflective;
+            mMaterials["floor"]->FresnelR0.z = reflective;
+            mMaterials["floor"]->NumFramesDirty = 3;
         }
 
         if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f))
@@ -683,7 +698,7 @@ void D3DAppHelloWorld::BasePass()
     auto matCB = mCurrentFrameResource->MaterialCB->Resource();
     mCommandList->SetGraphicsRootShaderResourceView(2, matCB->GetGPUVirtualAddress());
 
-    mCommandList->SetGraphicsRootDescriptorTable(3, mTextures[3]->handle);
+    mCommandList->SetGraphicsRootDescriptorTable(3, mTextures[4]->handle);
 
     mCommandList->SetGraphicsRootDescriptorTable(4, mShadowMap->Srv());
 

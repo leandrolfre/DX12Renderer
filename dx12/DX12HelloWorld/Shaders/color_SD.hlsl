@@ -25,12 +25,13 @@ struct VertexIn
 
 struct VertexOut
 {
-	float4 PosH  : SV_POSITION;
-	float3 PosW : POSITION;
-    float3 NormalW : NORMAL;
-	float2 TexCoord : TEXCOORD;
-	float3 TangentW : TANGENT;
-	float3 BitangentW: Binormal;
+	float4 PosH			: SV_POSITION;
+	float3 PosW			: POSITION;
+	float4 ShadowPosH	: POSITION1;
+    float3 NormalW		: NORMAL;
+	float2 TexCoord		: TEXCOORD;
+	float3 TangentW		: TANGENT;
+	float3 BitangentW	: Binormal;
 };
 
 VertexOut VS(VertexIn vin, float4 Color : COLOR)
@@ -42,7 +43,7 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
 	
 	// Transform to homogeneous clip space.
 	vout.PosH = mul(gViewProj, posW);
-	
+	vout.ShadowPosH = mul(gLights[0].ShadowTransform, posW);
 	vout.NormalW = mul((float3x3)gWorld, vin.Normal);
 	vout.TangentW = mul((float3x3)gWorld, vin.Tangent);
 	vout.BitangentW = cross(vout.NormalW, vout.TangentW);
@@ -75,7 +76,7 @@ float4 PS(VertexOut pin) : SV_Target
 	const float shininess = 1.0f - matData.Roughness;
 	Material mat = { diffuse, matData.FresnelR0, shininess};
 	
-	float3 shadowFactor = 1.0f;
+	float shadowFactor = clamp(CalcShadowFactor(pin.ShadowPosH), 0.2f, 1.0f);
 	
 	float4 directLight = ComputeLighting(gLights, mat, pin.PosW, pin.NormalW, viewDir, shadowFactor);
 	float4 litColor = directLight;//(ambient + directLight);
