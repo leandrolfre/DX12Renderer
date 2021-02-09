@@ -61,6 +61,7 @@ cbuffer cbPerPass : register(b1)
 
 TextureCube gCubeMap : register(t0);
 Texture2D gShadowMap : register(t1);
-Texture2D gMaterialMap[3] : register(t2);
+Texture2D gMaterialMap[4] : register(t2);
 StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
 SamplerState gLinearSample : register(s0);
+SamplerComparisonState gShadowSample : register(s1);
