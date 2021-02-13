@@ -1,16 +1,4 @@
-#define MaxLights 16
-
-struct Light
-{
-	float3 Strength;
-	float FalloffStart;
-	float3 Direction;
-	float FalloffEnd;
-	float3 Position;
-	float SpotPower;
-	float4x4 ShadowViewProj;
-	float4x4 ShadowTransform;
-};
+#include "LightingUtils.hlsli"
 
 struct MaterialData
 {
@@ -59,12 +47,7 @@ cbuffer cbPerPass : register(b1)
 	Light gLights[MaxLights];
 };
 
-TextureCube gCubeMap : register(t0);
-Texture2D gShadowMap : register(t1);
-
 Texture2D gDiffuseMap : register(t2);
 Texture2D gNormalMap : register(t3);
 
 StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
-SamplerState gLinearSample : register(s0);
-SamplerComparisonState gShadowSample : register(s1);

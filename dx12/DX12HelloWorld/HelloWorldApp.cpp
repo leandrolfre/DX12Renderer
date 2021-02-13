@@ -100,27 +100,17 @@ void D3DAppHelloWorld::BuildDefaultRootSignature()
     range[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0); //shadow
     range[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 2, 0); //Object textures
 
-    CD3DX12_ROOT_PARAMETER slotRootParameter[6];
+    CD3DX12_ROOT_PARAMETER slotRootParameter[5];
     slotRootParameter[0].InitAsConstantBufferView(0); //Object
     slotRootParameter[1].InitAsDescriptorTable(1, &range[2], D3D12_SHADER_VISIBILITY_PIXEL); //Object Textures
     slotRootParameter[2].InitAsShaderResourceView(0, 1); //Material
     slotRootParameter[3].InitAsConstantBufferView(1); //Pass
-    slotRootParameter[4].InitAsDescriptorTable(1, &range[0], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
-    slotRootParameter[5].InitAsDescriptorTable(1, &range[1], D3D12_SHADER_VISIBILITY_PIXEL); //ShadowMap
-    
+    slotRootParameter[4].InitAsDescriptorTable(1, &range[0], D3D12_SHADER_VISIBILITY_PIXEL); //cubeMap
 
-
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2];
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
     StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
-    StaticSamplers[1].Init(1,
-                           D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
-                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-                           0.0f, 16, D3D12_COMPARISON_FUNC_LESS_EQUAL,
-                           D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
-    rootSigDesc.NumStaticSamplers = 2;
+    rootSigDesc.NumStaticSamplers = 1;
     rootSigDesc.pStaticSamplers = StaticSamplers;
 
     CreateRootSignature(Device, rootSigDesc, mRootSignature.GetAddressOf());
@@ -146,17 +136,28 @@ void D3DAppHelloWorld::BuildBlurRootSignature()
 void D3DAppHelloWorld::BuildScreenRootSignature()
 {
     auto Device = RenderContext::Get().Device();
-    CD3DX12_DESCRIPTOR_RANGE table;
-    table.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    CD3DX12_DESCRIPTOR_RANGE table[3];
+    table[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 2);
+    table[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+    table[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
     
-    CD3DX12_ROOT_PARAMETER rootParameter[2];
+    CD3DX12_ROOT_PARAMETER rootParameter[5];
     rootParameter[0].InitAsConstantBufferView(0); //Object
-    rootParameter[1].InitAsDescriptorTable(1, &table, D3D12_SHADER_VISIBILITY_PIXEL);
-
-    CD3DX12_ROOT_SIGNATURE_DESC rootScreenSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1];
+    rootParameter[1].InitAsDescriptorTable(1, &table[0], D3D12_SHADER_VISIBILITY_PIXEL);
+    rootParameter[2].InitAsConstantBufferView(1); //Pass
+    rootParameter[3].InitAsDescriptorTable(1, &table[1], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
+    rootParameter[4].InitAsDescriptorTable(1, &table[2], D3D12_SHADER_VISIBILITY_PIXEL); //ShadowMap
+    CD3DX12_ROOT_SIGNATURE_DESC rootScreenSigDesc(5, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2];
     StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
-    rootScreenSigDesc.NumStaticSamplers = 1;
+    StaticSamplers[1].Init(1,
+                           D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                           D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                           0.0f, 16, D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                           D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+    rootScreenSigDesc.NumStaticSamplers = 2;
     rootScreenSigDesc.pStaticSamplers = StaticSamplers;
 
     CreateRootSignature(Device, rootScreenSigDesc, mScreenRootSignature.GetAddressOf());
@@ -257,11 +258,18 @@ void D3DAppHelloWorld::BuildPSO()
     psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = mBackBufferFormat;
+    psoDesc.NumRenderTargets = 4;
+    //psoDesc.RTVFormats[0] = mBackBufferFormat;
+    DXGI_FORMAT formats[int(GBuffer::NumGBuffer)] = { DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_SNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM };
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        psoDesc.RTVFormats[i] = formats[i];
+    }
+    
     psoDesc.SampleDesc.Count = 1;
     psoDesc.SampleDesc.Quality = 0;
     psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+
 
     ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
 
@@ -274,6 +282,10 @@ void D3DAppHelloWorld::BuildPSO()
     shadowDesc.PS = {};
     shadowDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
     shadowDesc.NumRenderTargets = 0;
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        shadowDesc.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
+    }
 
     ThrowIfFailed(Device->CreateGraphicsPipelineState(&shadowDesc, IID_PPV_ARGS(&mPSOs["shadow_opaque"])));
     
@@ -297,7 +309,13 @@ void D3DAppHelloWorld::BuildPSO()
     screenPsoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
     screenPsoDesc.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
     screenPsoDesc.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
-
+    screenPsoDesc.NumRenderTargets = 1;
+    screenPsoDesc.RTVFormats[0] = mBackBufferFormat;
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        screenPsoDesc.RTVFormats[i+1] = DXGI_FORMAT_UNKNOWN;
+    }
+    
     ThrowIfFailed(Device->CreateGraphicsPipelineState(&screenPsoDesc, IID_PPV_ARGS(&mPSOs["screen"])));
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC horizontalBlurDesc;
@@ -688,7 +706,8 @@ void D3DAppHelloWorld::OnKeyboardInput()
 void D3DAppHelloWorld::BasePass()
 {
     PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Base Pass");
-    mCommandList->OMSetRenderTargets(1, &mCurrentFrameResource->RT[0]->CpuRtv, true, &mDepthHandle);
+
+    mCommandList->OMSetRenderTargets(4, &mCurrentFrameResource->GBuffer[0]->CpuRtv, true, &mDepthHandle);
 
     ID3D12DescriptorHeap* descriptorHeaps[] = { ResourceManager::Get().DescriptorHeaps()/*, mUISrvDescriptorHeap.Get()*/ };
     mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -702,29 +721,36 @@ void D3DAppHelloWorld::BasePass()
     auto passCB = mCurrentFrameResource->PassCB->Resource();
     mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
 
-    //Save cubemap handle info elsewhere
-    mCommandList->SetGraphicsRootDescriptorTable(4, mCubeMapHandle);
-
-    mCommandList->SetGraphicsRootDescriptorTable(5, mShadowMap->Srv());
-
     mCommandList->SetPipelineState(mPSOs["opaque"].Get());
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
 
     mCommandList->SetPipelineState(mPSOs["sky"].Get());
+    mCommandList->SetGraphicsRootDescriptorTable(4, mCubeMapHandle);
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
 
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
                                                                            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON));
+
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->GBuffer[i]->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+    }
+    
     PIXEndEvent();
 }
 
 void D3DAppHelloWorld::CompositePass()
 {
     PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Composite Pass");
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+    //mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
     mCommandList->SetGraphicsRootSignature(mScreenRootSignature.Get());
     mCommandList->SetPipelineState(mPSOs["screen"].Get());
-    mCommandList->SetGraphicsRootDescriptorTable(1, mCurrentFrameResource->RT[0]->GpuSrv);
+    mCommandList->SetGraphicsRootDescriptorTable(1, mCurrentFrameResource->GBuffer[0]->GpuSrv);
+    auto passCB = mCurrentFrameResource->PassCB->Resource();
+    mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+    //Save cubemap handle info elsewhere
+    mCommandList->SetGraphicsRootDescriptorTable(3, mCubeMapHandle);
+    mCommandList->SetGraphicsRootDescriptorTable(4, mShadowMap->Srv());
     mCommandList->OMSetRenderTargets(1, &mBackbufferHandles[mCurrentBufferIndex], true, nullptr);
 
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Fullscreen]);
@@ -767,13 +793,23 @@ void D3DAppHelloWorld::BeginRender()
     RECT scissorRect = { 0L, 0L, static_cast<LONG>(mClientWidth), static_cast<LONG>(mClientHeight) };
     mCommandList->RSSetScissorRects(1, &scissorRect);
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    //mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentBackBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->GBuffer[i]->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    }
+    
     // Transition the resource from its initial state to be used as a depth buffer.
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
                                                                            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 
-    mCommandList->ClearRenderTargetView(mCurrentFrameResource->RT[0]->CpuRtv, clearColor, 0, nullptr);
+    //mCommandList->ClearRenderTargetView(mCurrentFrameResource->RT[0]->CpuRtv, clearColor, 0, nullptr);
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        mCommandList->ClearRenderTargetView(mCurrentFrameResource->GBuffer[i]->CpuRtv, clearColor, 0, nullptr);
+    }
+    
     mCommandList->ClearRenderTargetView(renderTargetView, clearColor, 0, nullptr);
     mCommandList->ClearDepthStencilView(depthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 }

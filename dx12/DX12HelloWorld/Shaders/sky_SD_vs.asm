@@ -96,10 +96,10 @@ dcl_temps 4
 //   o1.x <- <VS return value>.PosL.x; o1.y <- <VS return value>.PosL.y; o1.z <- <VS return value>.PosL.z; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 21 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\sky_SD.hlsl"
+#line 23 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\sky_SD.hlsl"
 mov r0.xyz, v0.xyzx  // r0.x <- vout.PosL.x; r0.y <- vout.PosL.y; r0.z <- vout.PosL.z
 
-#line 23
+#line 25
 mul r1.xyzw, v0.xxxx, CB0[0][0].xyzw
 mul r2.xyzw, v0.yyyy, CB0[0][1].xyzw
 add r1.xyzw, r1.xyzw, r2.xyzw
@@ -108,10 +108,10 @@ add r1.xyzw, r1.xyzw, r2.xyzw
 mul r2.xyzw, CB0[0][3].xyzw, l(1.000000, 1.000000, 1.000000, 1.000000)
 add r1.xyzw, r1.xyzw, r2.xyzw  // r1.x <- PosW.x; r1.y <- PosW.y; r1.z <- PosW.z; r1.w <- PosW.w
 
-#line 24
+#line 26
 add r1.xyz, r1.xyzx, CB1[1][24].xyzx
 
-#line 26
+#line 28
 mul r2.xyzw, r1.xxxx, CB1[1][16].xyww
 mul r3.xyzw, r1.yyyy, CB1[1][17].xyww
 add r2.xyzw, r2.xyzw, r3.xyzw
@@ -120,7 +120,7 @@ add r2.xyzw, r2.xyzw, r3.xyzw
 mul r1.xyzw, r1.wwww, CB1[1][19].xyww
 add r1.xyzw, r1.xyzw, r2.xyzw  // r1.x <- vout.PosH.x; r1.y <- vout.PosH.y; r1.z <- vout.PosH.z; r1.w <- vout.PosH.w
 
-#line 27
+#line 29
 mov o0.xyzw, r1.xyzw
 mov o1.xyz, r0.xyzx
 ret 

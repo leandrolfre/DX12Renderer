@@ -140,9 +140,9 @@ private:
 enum class GBuffer
 {
 	Position,
-	/*Normal,
+	Normal,
 	Albedo,
-	Specular,*/
+	Specular,
 	NumGBuffer
 };
 
@@ -162,6 +162,6 @@ public:
 	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB;
 	std::unique_ptr<RenderTarget> RT[2];
 	std::unique_ptr<RenderTarget> GBuffer[int(GBuffer::NumGBuffer)];
-	DXGI_FORMAT GBufferFormat[int(GBuffer::NumGBuffer)] = { DXGI_FORMAT_R16G16B16A16_FLOAT };// , DXGI_FORMAT_R8G8B8A8_SNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM};
+	DXGI_FORMAT GBufferFormat[int(GBuffer::NumGBuffer)] = { DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_SNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM};
 	UINT64 Fence;
 };

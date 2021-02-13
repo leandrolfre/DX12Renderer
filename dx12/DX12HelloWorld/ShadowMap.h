@@ -3,7 +3,7 @@
 #include "../Common/MathHelper.h"
 #include "../Common/d3dx12.h"
 
-class ID3D12Resource;
+struct ID3D12Resource;
 
 class ShadowMap
 {

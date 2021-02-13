@@ -116,7 +116,7 @@ dcl_temps 7
 //   o1.x <- <VS return value>.PosW.x; o1.y <- <VS return value>.PosW.y; o1.z <- <VS return value>.PosW.z; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 41 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
+#line 36 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
 mul r0.xyzw, v0.xxxx, CB0[0][0].xyzw
 mul r1.xyzw, v0.yyyy, CB0[0][1].xyzw
 add r0.xyzw, r0.xyzw, r1.xyzw
@@ -125,10 +125,10 @@ add r0.xyzw, r0.xyzw, r1.xyzw
 mul r1.xyzw, CB0[0][3].xyzw, l(1.000000, 1.000000, 1.000000, 1.000000)
 add r0.xyzw, r0.xyzw, r1.xyzw  // r0.x <- posW.x; r0.y <- posW.y; r0.z <- posW.z; r0.w <- posW.w
 
-#line 42
+#line 37
 mov r0.xyz, r0.xyzx  // r0.x <- vout.PosW.x; r0.y <- vout.PosW.y; r0.z <- vout.PosW.z
 
-#line 45
+#line 40
 mul r1.xyzw, r0.xxxx, CB1[1][16].xyzw
 mul r2.xyzw, r0.yyyy, CB1[1][17].xyzw
 add r1.xyzw, r1.xyzw, r2.xyzw
@@ -137,7 +137,7 @@ add r1.xyzw, r1.xyzw, r2.xyzw
 mul r2.xyzw, r0.wwww, CB1[1][19].xyzw
 add r1.xyzw, r1.xyzw, r2.xyzw  // r1.x <- vout.PosH.x; r1.y <- vout.PosH.y; r1.z <- vout.PosH.z; r1.w <- vout.PosH.w
 
-#line 46
+#line 41
 mul r2.xyzw, r0.xxxx, CB1[1][35].xyzw
 mul r3.xyzw, r0.yyyy, CB1[1][36].xyzw
 add r2.xyzw, r2.xyzw, r3.xyzw
@@ -146,30 +146,30 @@ add r2.xyzw, r2.xyzw, r3.xyzw
 mul r3.xyzw, r0.wwww, CB1[1][38].xyzw
 add r2.xyzw, r2.xyzw, r3.xyzw  // r2.x <- vout.ShadowPosH.x; r2.y <- vout.ShadowPosH.y; r2.z <- vout.ShadowPosH.z; r2.w <- vout.ShadowPosH.w
 
-#line 47
+#line 42
 mul r3.xyz, v2.xxxx, CB0[0][0].xyzx
 mul r4.xyz, v2.yyyy, CB0[0][1].xyzx
 add r3.xyz, r3.xyzx, r4.xyzx
 mul r4.xyz, v2.zzzz, CB0[0][2].xyzx
 add r3.xyz, r3.xyzx, r4.xyzx  // r3.x <- vout.NormalW.x; r3.y <- vout.NormalW.y; r3.z <- vout.NormalW.z
 
-#line 48
+#line 43
 mul r4.xyz, v1.xxxx, CB0[0][0].xyzx
 mul r5.xyz, v1.yyyy, CB0[0][1].xyzx
 add r4.xyz, r4.xyzx, r5.xyzx
 mul r5.xyz, v1.zzzz, CB0[0][2].xyzx
 add r4.xyz, r4.xyzx, r5.xyzx  // r4.x <- vout.TangentW.x; r4.y <- vout.TangentW.y; r4.z <- vout.TangentW.z
 
-#line 49
+#line 44
 mul r5.xyz, r3.yzxy, r4.zxyz
 mul r6.xyz, r3.zxyz, r4.yzxy
 mov r6.xyz, -r6.xyzx
 add r5.xyz, r5.xyzx, r6.xyzx  // r5.x <- vout.BitangentW.x; r5.y <- vout.BitangentW.y; r5.z <- vout.BitangentW.z
 
-#line 50
+#line 45
 mov r6.xy, v3.xyxx  // r6.x <- vout.TexCoord.x; r6.y <- vout.TexCoord.y
 
-#line 51
+#line 46
 mov o0.xyzw, r1.xyzw
 mov o2.xyzw, r2.xyzw
 mov o1.xyz, r0.xyzx

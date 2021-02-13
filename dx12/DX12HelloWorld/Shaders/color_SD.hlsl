@@ -1,18 +1,5 @@
 
-#ifndef NUM_DIR_LIGHTS
-	#define NUM_DIR_LIGHTS 1
-#endif
-
-#ifndef NUM_POINT_LIGHTS
-	#define NUM_POINT_LIGHTS 0
-#endif
-
-#ifndef NUM_SPOT_LIGHTS
-	#define NUM_SPOT_LIGHTS 0
-#endif
-
 #include "inc/Common.hlsli"
-#include "inc/LightingUtils.hlsli"
 
 struct VertexIn
 {
@@ -34,6 +21,14 @@ struct VertexOut
 	float3 BitangentW	: Binormal;
 };
 
+struct GBuffer
+{
+	float4 Position : SV_TARGET0;
+	float4 Normal : SV_TARGET1;
+	float4 Albedo : SV_TARGET2;
+	float4 FresnelShininess : SV_TARGET3;
+};
+
 VertexOut VS(VertexIn vin, float4 Color : COLOR)
 {
 	VertexOut vout;
@@ -51,7 +46,7 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
     return vout;
 }
 
-float4 PS(VertexOut pin) : SV_Target
+GBuffer PS(VertexOut pin)
 {
 	MaterialData matData = gMaterialData[gMaterialIndex];
 
@@ -70,20 +65,17 @@ float4 PS(VertexOut pin) : SV_Target
 		pin.NormalW = mul(normalMap.xyz, TBN);
 	}
 
-
-	float3 viewDir = normalize(gEyePosW - pin.PosW);
+	
 	//float4 diffuse = gMaterialMap[matData.DiffuseMapIndex].Sample(gLinearSample, pin.TexCoord);
 	float4 diffuse = pow(gDiffuseMap.Sample(gLinearSample, pin.TexCoord), 2.2f);
 	float4 ambient = gAmbientLight * diffuse;
 	const float shininess = 1.0f - matData.Roughness;
-	Material mat = { diffuse, matData.FresnelR0, shininess};
 	
-	float shadowFactor = clamp(CalcShadowFactor(pin.ShadowPosH), 0.2f, 1.0f);
+	GBuffer gbuffer;
+	gbuffer.Position = float4(pin.PosW, 1.0f);
+	gbuffer.Normal = float4(pin.NormalW, 1.0f);
+	gbuffer.Albedo = diffuse;
+	gbuffer.FresnelShininess = float4(matData.FresnelR0.xyz, shininess);
 	
-	float4 directLight = ComputeLighting(gLights, mat, pin.PosW, pin.NormalW, viewDir, shadowFactor);
-	float4 litColor = directLight;//(ambient + directLight);
-	
-	litColor.a = matData.DiffuseAlbedo.a;
-	
-	return litColor;
+	return gbuffer;
 }

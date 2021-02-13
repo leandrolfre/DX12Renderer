@@ -40,14 +40,14 @@ dcl_temps 2
 //   o1.x <- <VS return value>.TexCoord.x; o1.y <- <VS return value>.TexCoord.y; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 29 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\quad_SD.hlsl"
+#line 60 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\quad_SD.hlsl"
 mov r0.xyz, v0.xyzx  // r0.x <- vout.PosH.x; r0.y <- vout.PosH.y; r0.z <- vout.PosH.z
 mov r0.w, l(1.000000)  // r0.w <- vout.PosH.w
 
-#line 30
+#line 61
 mov r1.xy, v3.xyxx  // r1.x <- vout.TexCoord.x; r1.y <- vout.TexCoord.y
 
-#line 31
+#line 62
 mov o0.xyzw, r0.xyzw
 mov o1.xy, r1.xyxx
 ret 

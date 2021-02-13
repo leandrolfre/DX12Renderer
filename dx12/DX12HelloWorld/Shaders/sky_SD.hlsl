@@ -9,6 +9,8 @@ struct VertexIn
 	float2 Tex1   	: TEX1;
 };
 
+//TextureCube gCubeMap : register(t0);
+
 struct VertexOut
 {
 	float4 PosH : SV_POSITION;

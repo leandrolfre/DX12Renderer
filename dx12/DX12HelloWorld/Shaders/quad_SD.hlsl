@@ -1,7 +1,16 @@
-//#define MyRS1	"RootFlags( ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT ), " \
-//				"DescriptorTable( SRV(t0, numDescriptors = 1)), " \
-//				"StaticSampler(s0, " \
-//				"filter = FILTER_MIN_MAG_MIP_LINEAR )"
+#ifndef NUM_DIR_LIGHTS
+#define NUM_DIR_LIGHTS 1
+#endif
+
+#ifndef NUM_POINT_LIGHTS
+#define NUM_POINT_LIGHTS 0
+#endif
+
+#ifndef NUM_SPOT_LIGHTS
+#define NUM_SPOT_LIGHTS 0
+#endif
+
+#include "inc/LightingUtils.hlsli"
 
 struct VertexIn
 {
@@ -18,8 +27,30 @@ struct VertexOut
 	float2 TexCoord : TEXCOORD;
 };
 
-Texture2D gScreenMap : register(t0);
-SamplerState gLinearSample : register(s0);
+cbuffer cbPerPass : register(b1)
+{
+	float4x4 gView;
+	float4x4 gInvView;
+	float4x4 gProj;
+	float4x4 gInvProj;
+	float4x4 gViewProj;
+	float4x4 gInvViewProj;
+	float3 gEyePosW;
+	float cbPerObjectPad1;
+	float2 gRenderTargetSize;
+	float2 gInvRenderTargetSize;
+	float gNearZ;
+	float gFarZ;
+	float gTotalTime;
+	float gDeltaTime;
+	float4 gAmbientLight;
+	Light gLights[MaxLights];
+};
+
+Texture2D GBufferPosition			: register(t0, space2);
+Texture2D GBufferNormal				: register(t1, space2);
+Texture2D GBufferAlbedo				: register(t2, space2);
+Texture2D GBufferFresnelShininess	: register(t3, space2);
 
 VertexOut VS(VertexIn vin, float4 Color : COLOR)
 {
@@ -33,10 +64,20 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
 
 float4 PS(VertexOut pin) : SV_Target
 {
-	float4 diffuse = gScreenMap.Sample(gLinearSample, pin.TexCoord);
+	float4 position = GBufferPosition.Sample(gLinearSample, pin.TexCoord);
+	float4 normal = GBufferNormal.Sample(gLinearSample, pin.TexCoord);
+	float4 albedo = GBufferAlbedo.Sample(gLinearSample, pin.TexCoord);
+	float4 fresnelShininess = GBufferFresnelShininess.Sample(gLinearSample, pin.TexCoord);
+	float4 shadowPosH= mul(gLights[0].ShadowTransform, position);
+	float shadowFactor = clamp(CalcShadowFactor(shadowPosH), 0.2f, 1.0f);
+	float3 viewDir = normalize(gEyePosW - position.xyz);
+	float4 directLight = ComputeLighting(gLights, albedo, fresnelShininess.rgb, fresnelShininess.a, position.xyz, normal.xyz, viewDir, shadowFactor);
+	float4 litColor = directLight;//(ambient + directLight);
+
+	litColor.a = albedo.a;
 	
 	float gamma = 2.2f;
-	diffuse.rgb = pow(diffuse.rgb, float3(1.0f/gamma, 1.0f / gamma, 1.0f / gamma));
+	litColor.rgb = pow(litColor.rgb, float3(1.0f/gamma, 1.0f / gamma, 1.0f / gamma));
 	
-	return diffuse;
+	return litColor;
 }
