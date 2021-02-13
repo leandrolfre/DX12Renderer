@@ -90,7 +90,7 @@ bool D3DApp::InitDirect3D()
 
     RenderContext::Get().Init();
 
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     //Create Fence
     ThrowIfFailed(Device->CreateFence(mFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
     mFence->SetName(L"Main Fence");
@@ -108,19 +108,11 @@ bool D3DApp::InitDirect3D()
 
 void D3DApp::CreateCommandObjects()
 {
-    auto Device = RenderContext::Get().GetDevice();
-
-    //Create Command Queue
-    D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&mCommandQueue));
-
-    //Create Command Allocator
-    Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocator));
-    //Create Command List
-    Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&mCommandList));
-    mCommandList->Close();
+    auto& renderContext = RenderContext::Get();
+    auto Device = renderContext.Device();
+    mCommandQueue = renderContext.CommandQueue();
+    mCommandAllocator = renderContext.CommandAllocator();
+    mCommandList = renderContext.CommandList();
 }
 
 void D3DApp::CreateSwapChain()
@@ -216,7 +208,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
    
     for (int i = 0; i < mSwapChainBufferCount; ++i)
     {

@@ -64,14 +64,16 @@ float4 PS(VertexOut pin) : SV_Target
 		float3 B = normalize(pin.BitangentW - dot(pin.BitangentW, N) * N);
 		
 		float3x3 TBN = { T, B, N };
-		float4 normalMap = gMaterialMap[matData.DiffuseMapIndex + 1].Sample(gLinearSample, pin.TexCoord);
+		//float4 normalMap = gMaterialMap[matData.DiffuseMapIndex + 1].Sample(gLinearSample, pin.TexCoord);
+		float4 normalMap = gNormalMap.Sample(gLinearSample, pin.TexCoord);
 		normalMap = normalMap * 2.0f - 1.0f;
 		pin.NormalW = mul(normalMap.xyz, TBN);
 	}
 
 
 	float3 viewDir = normalize(gEyePosW - pin.PosW);
-	float4 diffuse = gMaterialMap[matData.DiffuseMapIndex].Sample(gLinearSample, pin.TexCoord);
+	//float4 diffuse = gMaterialMap[matData.DiffuseMapIndex].Sample(gLinearSample, pin.TexCoord);
+	float4 diffuse = pow(gDiffuseMap.Sample(gLinearSample, pin.TexCoord), 2.2f);
 	float4 ambient = gAmbientLight * diffuse;
 	const float shininess = 1.0f - matData.Roughness;
 	Material mat = { diffuse, matData.FresnelR0, shininess};

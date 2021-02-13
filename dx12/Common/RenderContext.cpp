@@ -50,11 +50,38 @@ void RenderContext::Init()
     ComPtr<IDXGIFactory5> factory5;
     ThrowIfFailed(dxgiFactory.As(&factory5));
     factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &bAllowTearing, sizeof(bAllowTearing));
+
+    //Create Command Queue
+    D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    mDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&mCommandQueue));
+
+    //Create Command Allocator
+    mDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocator));
+    //Create Command List
+    mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&mCommandList));
+    mCommandList->Close();
 }
 
-ID3D12Device2* RenderContext::GetDevice()
+ID3D12Device2* RenderContext::Device()
 {
     return mDevice.Get();
+}
+
+ID3D12CommandQueue* RenderContext::CommandQueue()
+{
+    return mCommandQueue.Get();
+}
+
+ID3D12GraphicsCommandList* RenderContext::CommandList()
+{
+    return mCommandList.Get();
+}
+
+ID3D12CommandAllocator* RenderContext::CommandAllocator()
+{
+    return mCommandAllocator.Get();
 }
 
 IDXGIFactory4* RenderContext::GetDXGIFactory()

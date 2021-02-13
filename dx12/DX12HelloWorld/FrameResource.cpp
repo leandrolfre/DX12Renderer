@@ -6,7 +6,7 @@
 FrameResource::FrameResource(UINT passCount, UINT64 rtWidth, UINT64 rtHeight, DXGI_FORMAT rtFormat) : Fence(0)
 {
 
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     ThrowIfFailed(Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(CmdListAllocator.GetAddressOf())));
     UINT bufferSize = 100;
     PassCB = std::make_unique<UploadBuffer<PassConstants>>(Device, passCount, true);
@@ -18,4 +18,9 @@ FrameResource::FrameResource(UINT passCount, UINT64 rtWidth, UINT64 rtHeight, DX
 
     RT[0]->Resource()->SetName(L"Frame Resource RT 0");
     RT[1]->Resource()->SetName(L"Frame Resource RT 1");
+
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        GBuffer[i] = std::make_unique<RenderTarget>(rtWidth, rtHeight, GBufferFormat[i]);
+    }
 }

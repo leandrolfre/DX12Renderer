@@ -10,14 +10,6 @@
 #include "../Common/d3dx12.h"
 #include "../Common/MathHelper.h"
 
-struct Texture
-{
-	CD3DX12_GPU_DESCRIPTOR_HANDLE handle;
-	Microsoft::WRL::ComPtr<ID3D12Resource> Resource;
-	Microsoft::WRL::ComPtr<ID3D12Resource> UploadHeap;
-	UINT ID = 0;
-};
-
 struct Material
 {
 	std::string Name;
@@ -29,7 +21,7 @@ struct Material
 	float pad1;
 	DirectX::XMFLOAT4 DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
 	DirectX::XMFLOAT3 FresnelR0 = { 0.01f, 0.01f, 0.01f };
-	float pad2;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE TextureHandle;
 };
 
 struct Light
@@ -143,9 +135,16 @@ private:
 	UINT mElementCount;
 	UINT mCurrElement;
 	bool mIsConstantBuffer;
-
 };
 
+enum class GBuffer
+{
+	Position,
+	/*Normal,
+	Albedo,
+	Specular,*/
+	NumGBuffer
+};
 
 class FrameResource
 {
@@ -162,6 +161,7 @@ public:
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB;
 	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB;
 	std::unique_ptr<RenderTarget> RT[2];
-	
+	std::unique_ptr<RenderTarget> GBuffer[int(GBuffer::NumGBuffer)];
+	DXGI_FORMAT GBufferFormat[int(GBuffer::NumGBuffer)] = { DXGI_FORMAT_R16G16B16A16_FLOAT };// , DXGI_FORMAT_R8G8B8A8_SNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM};
 	UINT64 Fence;
 };

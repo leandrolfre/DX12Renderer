@@ -58,7 +58,7 @@ void ShadowMap::BuildDescriptors()
     mHGpuSrv = ResourceManager.AllocGPUShaderResource();
     mHCpuDsv = ResourceManager.AllocDepthStencilResource();
 
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     Device->CreateShaderResourceView(mShadowMap.Get(), &srvDesc, mHCpuSrv);
     Device->CreateDepthStencilView(mShadowMap.Get(), &dsvDesc, mHCpuDsv);
 }
@@ -85,7 +85,7 @@ void ShadowMap::BuildResource()
     optClear.DepthStencil.Depth = 1.0f;
     optClear.DepthStencil.Stencil = 0;
 
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     ThrowIfFailed(Device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                                                    D3D12_HEAP_FLAG_NONE,
                                                    &texDesc,

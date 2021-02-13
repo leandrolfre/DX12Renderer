@@ -1,6 +1,6 @@
 #include "HelloWorldApp.h"
 #include "GeometryGenerator.h"
-#include "../Common/DDSTextureLoader.h"
+#include "TextureManager.h"
 
 #include "ImGui/imgui_impl_win32.h"
 #include "ImGui/imgui_impl_dx12.h"
@@ -18,7 +18,7 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
         return false;
     }
 
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     mCam.SetPosition(4.0f, 10.0f, -15.0f);
     mCam.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 
@@ -34,7 +34,6 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
     BuildRootSignature();
     BuildDescriptorHeaps();
     BuildShadersAndInputLayout();
-    BuildTextures();
     BuildMaterials();
     BuildScene();
     BuildFrameResources();
@@ -66,7 +65,7 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
 
 void D3DAppHelloWorld::BuildDescriptorHeaps()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
    // mBlurFilter->BuildDescriptors();
 
     D3D12_DESCRIPTOR_HEAP_DESC descUI = {};
@@ -95,19 +94,20 @@ void CreateRootSignature(ComPtr<ID3D12Device2> Device, const CD3DX12_ROOT_SIGNAT
 
 void D3DAppHelloWorld::BuildDefaultRootSignature()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     CD3DX12_DESCRIPTOR_RANGE range[3];
     range[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0); //cube
     range[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0); //shadow
-    range[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 2, 0); //textures
+    range[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 2, 0); //Object textures
 
     CD3DX12_ROOT_PARAMETER slotRootParameter[6];
     slotRootParameter[0].InitAsConstantBufferView(0); //Object
-    slotRootParameter[1].InitAsConstantBufferView(1); //Pass
+    slotRootParameter[1].InitAsDescriptorTable(1, &range[2], D3D12_SHADER_VISIBILITY_PIXEL); //Object Textures
     slotRootParameter[2].InitAsShaderResourceView(0, 1); //Material
-    slotRootParameter[3].InitAsDescriptorTable(1, &range[0], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
-    slotRootParameter[4].InitAsDescriptorTable(1, &range[1], D3D12_SHADER_VISIBILITY_PIXEL); //ShadowMap
-    slotRootParameter[5].InitAsDescriptorTable(1, &range[2], D3D12_SHADER_VISIBILITY_PIXEL); //Textures
+    slotRootParameter[3].InitAsConstantBufferView(1); //Pass
+    slotRootParameter[4].InitAsDescriptorTable(1, &range[0], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
+    slotRootParameter[5].InitAsDescriptorTable(1, &range[1], D3D12_SHADER_VISIBILITY_PIXEL); //ShadowMap
+    
 
 
     CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -128,7 +128,7 @@ void D3DAppHelloWorld::BuildDefaultRootSignature()
 
 void D3DAppHelloWorld::BuildBlurRootSignature()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     CD3DX12_DESCRIPTOR_RANGE blurRange[2];
     blurRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     blurRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
@@ -145,7 +145,7 @@ void D3DAppHelloWorld::BuildBlurRootSignature()
 
 void D3DAppHelloWorld::BuildScreenRootSignature()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     CD3DX12_DESCRIPTOR_RANGE table;
     table.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     
@@ -244,7 +244,7 @@ void D3DAppHelloWorld::BuildShadersAndInputLayout()
 
 void D3DAppHelloWorld::BuildPSO()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
     ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 
@@ -318,7 +318,7 @@ void D3DAppHelloWorld::BuildPSO()
 
 void D3DAppHelloWorld::BuildFrameResources()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
 
     for(int i = 0; i < gNumFrameResources; ++i)
     {
@@ -368,8 +368,46 @@ void D3DAppHelloWorld::BuildScene()
     mLayerRItems[int(RenderLayer::Fullscreen)].push_back(std::move(fullscreenQuad));
 }
 
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE CreateTextureSRV(const std::wstring& path, bool isCubeMap)
+{
+    auto Device = RenderContext::Get().Device();
+    auto& ResourceManager = ResourceManager::Get();
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+
+    auto Texture = !path.empty() ? TextureManager::Get().getTexture(path) : nullptr;
+    ID3D12Resource* Resource = nullptr;
+
+    srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    srvDesc.Texture2D.MipLevels = 0;
+    if (Texture)
+    {
+        srvDesc.Format = Texture->Resource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = Texture->Resource->GetDesc().MipLevels;
+        Resource = Texture->Resource.Get();
+    }
+    
+    srvDesc.ViewDimension = isCubeMap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+    auto srvHandle = ResourceManager.AllocShaderResource();
+    Device->CreateShaderResourceView(Resource, &srvDesc, srvHandle);
+    return ResourceManager.AllocGPUShaderResource();
+}
+
 void D3DAppHelloWorld::BuildMaterials()
 {
+
+    std::vector<std::wstring> texPaths = {
+        L"Texture/pbr/beaten-up-metal1-albedo.dds",
+        L"Texture/pbr/beaten-up-metal1-Normal-dx.dds",
+        L"Texture/bricks2.dds",
+        L"Texture/bricks2_nmap.dds",
+        L"Texture/hsquareCM.dds"
+    };
+
     auto floor = std::make_unique<Material>();
     floor->Name = "floor";
     floor->NumFramesDirty = gNumFrameResources;
@@ -377,8 +415,10 @@ void D3DAppHelloWorld::BuildMaterials()
     floor->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
     floor->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
     floor->Roughness = 0.05f;
-    floor->DiffuseSrvHeapIndex = mTextures[2]->ID;
+    floor->TextureHandle = CreateTextureSRV(texPaths[2], false);
+    CreateTextureSRV(texPaths[3], false);
     floor->hasNormalMap = 0;
+    
 
     auto lightbox = std::make_unique<Material>();
     lightbox->Name = "lightBox";
@@ -387,7 +427,9 @@ void D3DAppHelloWorld::BuildMaterials()
     lightbox->DiffuseAlbedo = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
     lightbox->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
     lightbox->Roughness = 0.05f;
-    lightbox->DiffuseSrvHeapIndex = mTextures[2]->ID;
+    lightbox->TextureHandle = CreateTextureSRV(texPaths[2], false);
+    CreateTextureSRV(L"", false);
+    lightbox->hasNormalMap = 0;
 
     auto sphere = std::make_unique<Material>();
     sphere->Name = "spheres";
@@ -396,7 +438,8 @@ void D3DAppHelloWorld::BuildMaterials()
     sphere->DiffuseAlbedo = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
     sphere->FresnelR0 = XMFLOAT3(1.0f, 1.0f, 1.0f);
     sphere->Roughness = 0.05f;
-    sphere->DiffuseSrvHeapIndex = mTextures[0]->ID;
+    sphere->TextureHandle = CreateTextureSRV(texPaths[0], false);
+    CreateTextureSRV(texPaths[1], false);
     sphere->hasNormalMap = 1;
 
     auto sky = std::make_unique<Material>();
@@ -406,57 +449,15 @@ void D3DAppHelloWorld::BuildMaterials()
     sky->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
     sky->FresnelR0 = XMFLOAT3(0.95f, 0.93f, 0.88f);
     sky->Roughness = 0.05f;
-    sky->DiffuseSrvHeapIndex = mTextures[4]->ID;
+    sky->TextureHandle = CreateTextureSRV(texPaths[4], true);
+    CreateTextureSRV(L"", false);
     sky->hasNormalMap = 0;
+    mCubeMapHandle = sky->TextureHandle;
     
     mMaterials["sphere"] = std::move(sphere);
     mMaterials["floor"] = std::move(floor);
     mMaterials["lightBox"] = std::move(lightbox);
     mMaterials["sky"] = std::move(sky);
-}
-
-void D3DAppHelloWorld::BuildTextures()
-{
-    auto Device = RenderContext::Get().GetDevice();
-    auto& ResourceManager = ResourceManager::Get();
-    std::vector<std::wstring> texPaths = { 
-        L"Texture/pbr/beaten-up-metal1-albedo.dds",
-        L"Texture/pbr/beaten-up-metal1-Normal-dx.dds",
-        L"Texture/bricks2.dds",
-        L"Texture/bricks2_nmap.dds",
-        L"Texture/hsquareCM.dds"
-    };
-
-    for (int i = 0; i < texPaths.size(); ++i)
-    {
-        auto& texPath = texPaths[i];
-        mTextures[i] = std::make_unique<Texture>();
-        mTextures[i]->ID = i;
-        ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(Device, mCommandList.Get(), texPath.c_str(), mTextures[i]->Resource, mTextures[i]->UploadHeap));
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Texture2D.MostDetailedMip = 0;
-        srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
-        srvDesc.Format = mTextures[i]->Resource->GetDesc().Format;
-        
-        if (texPaths[i].find(L"hsquareCM") != std::string::npos)
-        {
-           srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        }
-
-        srvDesc.Texture2D.MipLevels = mTextures[i]->Resource->GetDesc().MipLevels;
-
-        if (i == texPaths.size() - 1)
-        {
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-        }
-        mTextures[i]->handle = ResourceManager.AllocGPUShaderResource();
-        auto srvHandle = ResourceManager.AllocShaderResource();
-        Device->CreateShaderResourceView(mTextures[i]->Resource.Get(), &srvDesc, srvHandle);
-    }
 }
 
 void D3DAppHelloWorld::UpdateMaterialCB()
@@ -698,15 +699,13 @@ void D3DAppHelloWorld::BasePass()
     auto matCB = mCurrentFrameResource->MaterialCB->Resource();
     mCommandList->SetGraphicsRootShaderResourceView(2, matCB->GetGPUVirtualAddress());
 
-    mCommandList->SetGraphicsRootDescriptorTable(3, mTextures[4]->handle);
-
-    mCommandList->SetGraphicsRootDescriptorTable(4, mShadowMap->Srv());
-
-    //bind all textures
-    mCommandList->SetGraphicsRootDescriptorTable(5, mTextures[0]->handle);
-
     auto passCB = mCurrentFrameResource->PassCB->Resource();
-    mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+    mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
+
+    //Save cubemap handle info elsewhere
+    mCommandList->SetGraphicsRootDescriptorTable(4, mCubeMapHandle);
+
+    mCommandList->SetGraphicsRootDescriptorTable(5, mShadowMap->Srv());
 
     mCommandList->SetPipelineState(mPSOs["opaque"].Get());
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
@@ -738,13 +737,16 @@ void D3DAppHelloWorld::ShadowPass()
     mCommandList->RSSetViewports(1, &mShadowMap->Viewport());
     mCommandList->RSSetScissorRects(1, &mShadowMap->ScissorRect());
 
+    ID3D12DescriptorHeap* descriptorHeaps[] = { ResourceManager::Get().DescriptorHeaps()/*, mUISrvDescriptorHeap.Get()*/ };
+    mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
     mCommandList->ClearDepthStencilView(mShadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
     mCommandList->OMSetRenderTargets(0, nullptr, false, &mShadowMap->Dsv());
     mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
     auto passCB = mCurrentFrameResource->PassCB->Resource();
-    mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+    mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
     mCommandList->SetPipelineState(mPSOs["shadow_opaque"].Get());
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
 

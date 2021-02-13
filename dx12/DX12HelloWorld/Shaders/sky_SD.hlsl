@@ -29,5 +29,5 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin) : SV_TARGET
 {
-	return gCubeMap.Sample(gLinearSample, pin.PosL);
+	return pow(gCubeMap.Sample(gLinearSample, pin.PosL), 2.2);
 }

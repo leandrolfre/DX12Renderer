@@ -52,7 +52,6 @@ private:
 	void BuildScene();
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<std::unique_ptr<Mesh>>& rItems);
 	void BuildMaterials();
-	void BuildTextures();
 	void OnKeyboardInput();
 	void BasePass();
 	void CompositePass();
@@ -69,7 +68,6 @@ private:
 	std::vector<std::unique_ptr<Mesh>> mLayerRItems[(int)RenderLayer::RenderLayerCount];
 	std::unordered_map < std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
-	std::unordered_map<int, std::unique_ptr<Texture>> mTextures;
 	ComPtr<ID3D12RootSignature> mRootSignature;
 	ComPtr<ID3D12RootSignature> mPostProcessRootSignature;
 	ComPtr<ID3D12RootSignature> mScreenRootSignature;
@@ -86,6 +84,7 @@ private:
 	std::unique_ptr<ShadowMap> mShadowMap;
 	FrameResource* mCurrentFrameResource = nullptr;
 	Mesh* mLightBox;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE mCubeMapHandle;
 	BoundingSphere mSceneBounds;
 	UINT mCurrentFrameResourceIndex = 0;
 	int mPassCbvOffset = 0;

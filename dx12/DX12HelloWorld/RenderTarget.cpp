@@ -6,7 +6,7 @@
 
 RenderTarget::RenderTarget(UINT64 width, UINT64 height, DXGI_FORMAT format) : mWidth(width), mHeight(height), mFormat(format)
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     D3D12_RESOURCE_DESC texDesc;
     ZeroMemory(&texDesc, sizeof(D3D12_RESOURCE_DESC));
 
@@ -50,7 +50,7 @@ RenderTarget::RenderTarget(UINT64 width, UINT64 height, DXGI_FORMAT format) : mW
     rtDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
     Device->CreateRenderTargetView(mResource.Get(), &rtDesc, CpuRtv);
-
+  
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
     ZeroMemory(&srvDesc, sizeof(D3D12_SHADER_RESOURCE_VIEW_DESC));
 

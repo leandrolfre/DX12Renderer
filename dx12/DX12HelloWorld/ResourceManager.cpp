@@ -35,7 +35,7 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GpuHandle()
 
 ResourceManager::ResourceManager()
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     int heapSize = 100;
     mShaderDescriptorHeap = std::make_unique<DescriptorHeap>(Device, heapSize, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
     mRenderTargetDescriptorHeap = std::make_unique<DescriptorHeap>(Device, heapSize, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
@@ -79,7 +79,7 @@ ID3D12DescriptorHeap* ResourceManager::DescriptorHeaps()
 
 ComPtr<ID3D12Resource> ResourceManager::CreateDefaultBuffer(const void* initData, UINT64 byteSize, ComPtr<ID3D12Resource>& uploadBuffer, ID3D12GraphicsCommandList* cmdList)
 {
-    auto Device = RenderContext::Get().GetDevice();
+    auto Device = RenderContext::Get().Device();
     ComPtr<ID3D12Resource> defaultBuffer;
 
     ThrowIfFailed(Device->CreateCommittedResource(

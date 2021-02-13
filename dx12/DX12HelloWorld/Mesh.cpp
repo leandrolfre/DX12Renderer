@@ -67,12 +67,16 @@ void Mesh::Draw(ID3D12GraphicsCommandList* cmdList, UploadBuffer<ObjectConstants
     XMStoreFloat4x4(&objConstants.World, world);
 
 	for (auto& submesh : mSubmeshes)
-	{    
-        objConstants.MaterialIndex = submesh.Mat ? submesh.Mat->MatCBIndex : 0;
-        auto bufferLocation = objectCB->CopyData(objConstants);
+	{   
+        if (submesh.Mat)
+        {
+            objConstants.MaterialIndex = submesh.Mat->MatCBIndex;
+            cmdList->SetGraphicsRootDescriptorTable(1, submesh.Mat->TextureHandle);
+        }
         
+        auto bufferLocation = objectCB->CopyData(objConstants);
         cmdList->SetGraphicsRootConstantBufferView(0, bufferLocation);
-		cmdList->DrawIndexedInstanced(submesh.IndexCount, 1, submesh.StartIndexLocation, submesh.BaseVertexLocation, 0);
+   		cmdList->DrawIndexedInstanced(submesh.IndexCount, 1, submesh.StartIndexLocation, submesh.BaseVertexLocation, 0);
 	}
 }
 

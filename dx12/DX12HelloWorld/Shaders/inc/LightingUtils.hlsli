@@ -15,7 +15,7 @@ float3 BlinnPhong(float3 lightStrength, float3 lightDir, float3 normal, float3 v
 {
 	const float m = mat.Shininess * 1024.0f;
 	float3 r = reflect(-viewDir, normal);
-	float3 reflectColor = gCubeMap.Sample(gLinearSample, r).rgb;
+	float3 reflectColor = pow(gCubeMap.Sample(gLinearSample, r).rgb, 2.2);
 	float3 fresnelFactor = SchlickFresnel(mat.FresnelR0, normal, r);
 	float3 halfVec = normalize(viewDir+lightDir);
 	float specStrength = 0.8f;
