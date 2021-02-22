@@ -63,7 +63,7 @@ public:
 			radius*sinf(phi)*cosf(theta),
 			radius*cosf(phi),
 			radius*sinf(phi)*sinf(theta),
-			1.0f);
+			0.0f);
 	}
 
     static DirectX::XMMATRIX InverseTranspose(DirectX::CXMMATRIX M)

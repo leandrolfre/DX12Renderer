@@ -30,7 +30,7 @@ class Mesh
 public:
 	Mesh(MeshData& meshData, Material* material);
 	~Mesh() = default;
-	void Draw(ID3D12GraphicsCommandList* cmdList, UploadBuffer<ObjectConstants>* objectCB);
+	void Draw(ID3D12GraphicsCommandList* cmdList, UploadBuffer<ObjectConstants>* objectCB = nullptr);
 	void UploadData(ID3D12GraphicsCommandList* cmdList);
 
 public:

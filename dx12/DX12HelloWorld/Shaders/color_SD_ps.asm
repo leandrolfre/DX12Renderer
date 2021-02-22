@@ -88,37 +88,37 @@ dcl_temps 7
 //
 // Initial variable locations:
 //   v0.x <- pin.PosH.x; v0.y <- pin.PosH.y; v0.z <- pin.PosH.z; v0.w <- pin.PosH.w; 
-//   v1.x <- pin.PosW.x; v1.y <- pin.PosW.y; v1.z <- pin.PosW.z; 
+//   v1.x <- pin.PosV.x; v1.y <- pin.PosV.y; v1.z <- pin.PosV.z; 
 //   v2.x <- pin.ShadowPosH.x; v2.y <- pin.ShadowPosH.y; v2.z <- pin.ShadowPosH.z; v2.w <- pin.ShadowPosH.w; 
-//   v3.x <- pin.NormalW.x; v3.y <- pin.NormalW.y; v3.z <- pin.NormalW.z; 
+//   v3.x <- pin.NormalV.x; v3.y <- pin.NormalV.y; v3.z <- pin.NormalV.z; 
 //   v4.x <- pin.TexCoord.x; v4.y <- pin.TexCoord.y; 
-//   v5.x <- pin.TangentW.x; v5.y <- pin.TangentW.y; v5.z <- pin.TangentW.z; 
-//   v6.x <- pin.BitangentW.x; v6.y <- pin.BitangentW.y; v6.z <- pin.BitangentW.z; 
+//   v5.x <- pin.TangentV.x; v5.y <- pin.TangentV.y; v5.z <- pin.TangentV.z; 
+//   v6.x <- pin.BitangentV.x; v6.y <- pin.BitangentV.y; v6.z <- pin.BitangentV.z; 
 //   o3.x <- <PS return value>.FresnelShininess.x; o3.y <- <PS return value>.FresnelShininess.y; o3.z <- <PS return value>.FresnelShininess.z; o3.w <- <PS return value>.FresnelShininess.w; 
 //   o2.x <- <PS return value>.Albedo.x; o2.y <- <PS return value>.Albedo.y; o2.z <- <PS return value>.Albedo.z; o2.w <- <PS return value>.Albedo.w; 
 //   o1.x <- <PS return value>.Normal.x; o1.y <- <PS return value>.Normal.y; o1.z <- <PS return value>.Normal.z; o1.w <- <PS return value>.Normal.w; 
 //   o0.x <- <PS return value>.Position.x; o0.y <- <PS return value>.Position.y; o0.z <- <PS return value>.Position.z; o0.w <- <PS return value>.Position.w
 //
-#line 51 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
+#line 52 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\color_SD.hlsl"
 ld_structured r0.x, CB0[0][4].x, l(16), T2[0].xxxx  // r0.x <- matData.FresnelR0.x
 ld_structured r0.y, CB0[0][4].x, l(20), T2[0].xxxx  // r0.y <- matData.FresnelR0.y
 ld_structured r0.z, CB0[0][4].x, l(24), T2[0].xxxx  // r0.z <- matData.FresnelR0.z
 ld_structured r1.x, CB0[0][4].x, l(28), T2[0].xxxx  // r1.x <- matData.Roughness
 ld_structured r1.y, CB0[0][4].x, l(44), T2[0].xxxx  // r1.y <- matData.hasNormalMap
 
-#line 53
+#line 54
 dp3 r1.z, v3.xyzx, v3.xyzx
 rsq r1.z, r1.z
-mul r2.xyz, r1.zzzz, v3.xyzx  // r2.x <- pin.NormalW.x; r2.y <- pin.NormalW.y; r2.z <- pin.NormalW.z
+mul r2.xyz, r1.zzzz, v3.xyzx  // r2.x <- pin.NormalV.x; r2.y <- pin.NormalV.y; r2.z <- pin.NormalV.z
 
-#line 55
+#line 56
 ine r1.y, l(0, 0, 0, 0), r1.y
 if_nz r1.y
 
-#line 57
+#line 58
   mov r1.yzw, r2.xxyz  // r1.y <- N.x; r1.z <- N.y; r1.w <- N.z
 
-#line 58
+#line 59
   dp3 r3.x, v5.xyzx, r1.yzwy
   mul r3.xyz, r1.yzwy, r3.xxxx
   mov r3.xyz, -r3.xyzx
@@ -127,7 +127,7 @@ if_nz r1.y
   rsq r3.w, r3.w
   mul r3.xyz, r3.wwww, r3.xyzx  // r3.x <- T.x; r3.y <- T.y; r3.z <- T.z
 
-#line 59
+#line 60
   dp3 r3.w, v6.xyzx, r1.yzwy
   mul r4.xyz, r1.yzwy, r3.wwww
   mov r4.xyz, -r4.xyzx
@@ -136,7 +136,7 @@ if_nz r1.y
   rsq r3.w, r3.w
   mul r4.xyz, r3.wwww, r4.xyzx  // r4.x <- B.x; r4.y <- B.y; r4.z <- B.z
 
-#line 61
+#line 62
   mov r5.x, r3.x  // r5.x <- TBN._m00
   mov r5.y, r4.x  // r5.y <- TBN._m10
   mov r5.z, r1.y  // r5.z <- TBN._m20
@@ -147,49 +147,49 @@ if_nz r1.y
   mov r1.z, r4.z  // r1.z <- TBN._m12
   mov r1.w, r1.w  // r1.w <- TBN._m22
 
-#line 63
+#line 64
   sample r3.xyz, v4.xyxx, T1[3].xyzw, S0[0]
   mov r3.xyz, r3.xyzx  // r3.x <- normalMap.x; r3.y <- normalMap.y; r3.z <- normalMap.z
 
-#line 64
+#line 65
   mul r3.xyz, r3.xyzx, l(2.000000, 2.000000, 2.000000, 0.000000)
   mov r4.xyz, l(-1.000000,-1.000000,-1.000000,-0.000000)
   add r3.xyz, r3.xyzx, r4.xyzx
 
-#line 65
+#line 66
   dp3 r2.x, r3.xyzx, r5.xyzx
   dp3 r2.y, r3.xyzx, r6.xyzx
   dp3 r2.z, r3.xyzx, r1.yzwy
 
-#line 66
+#line 67
 endif 
 
-#line 70
+#line 69
 sample r3.xyzw, v4.xyxx, T0[2].xyzw, S0[0]
 log r3.xyzw, r3.xyzw
 mul r3.xyzw, r3.xyzw, l(2.200000, 2.200000, 2.200000, 2.200000)
 exp r3.xyzw, r3.xyzw  // r3.x <- diffuse.x; r3.y <- diffuse.y; r3.z <- diffuse.z; r3.w <- diffuse.w
 
-#line 72
+#line 70
 mov r1.x, -r1.x
 add r0.w, r1.x, l(1.000000)  // r0.w <- shininess
 
-#line 75
+#line 73
 mov r1.xyz, v1.xyzx  // r1.x <- gbuffer.Position.x; r1.y <- gbuffer.Position.y; r1.z <- gbuffer.Position.z
 mov r1.w, l(1.000000)  // r1.w <- gbuffer.Position.w
 
-#line 76
+#line 74
 mov r2.xyz, r2.xyzx  // r2.x <- gbuffer.Normal.x; r2.y <- gbuffer.Normal.y; r2.z <- gbuffer.Normal.z
 mov r2.w, l(1.000000)  // r2.w <- gbuffer.Normal.w
 
-#line 77
+#line 75
 mov r3.xyzw, r3.xyzw  // r3.x <- gbuffer.Albedo.x; r3.y <- gbuffer.Albedo.y; r3.z <- gbuffer.Albedo.z; r3.w <- gbuffer.Albedo.w
 
-#line 78
+#line 76
 mov r0.xyz, r0.xyzx  // r0.x <- gbuffer.FresnelShininess.x; r0.y <- gbuffer.FresnelShininess.y; r0.z <- gbuffer.FresnelShininess.z
 mov r0.w, r0.w  // r0.w <- gbuffer.FresnelShininess.w
 
-#line 80
+#line 78
 mov o0.xyzw, r1.xyzw
 mov o1.xyzw, r2.xyzw
 mov o2.xyzw, r3.xyzw

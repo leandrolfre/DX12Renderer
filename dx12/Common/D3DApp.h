@@ -58,7 +58,6 @@ protected:
 	bool InitDirect3D();
 	void CreateCommandObjects();
 	void CreateSwapChain();
-	ComPtr<ID3DBlob> LoadBinary(const std::string& filename);
 	float AspectRatio()  const;
 	void FlushCommandQueue();
 

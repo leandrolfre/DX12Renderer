@@ -64,17 +64,24 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
 
 float4 PS(VertexOut pin) : SV_Target
 {
+	float dx = 1.0f / (2.0f * 1920.0f);
+	float dy = 1.0f / (2.0f * 1080.0f);
+	
 	float4 position = GBufferPosition.Sample(gLinearSample, pin.TexCoord);
 	float4 normal = GBufferNormal.Sample(gLinearSample, pin.TexCoord);
 	float4 albedo = GBufferAlbedo.Sample(gLinearSample, pin.TexCoord);
 	float4 fresnelShininess = GBufferFresnelShininess.Sample(gLinearSample, pin.TexCoord);
-	float4 shadowPosH= mul(gLights[0].ShadowTransform, position);
-	float shadowFactor = clamp(CalcShadowFactor(shadowPosH), 0.2f, 1.0f);
-	float3 viewDir = normalize(gEyePosW - position.xyz);
+	float4 shadowPosH = mul(gLights[0].ShadowTransform,mul(gInvView, float4(position.xyz, 1.0f))); //convert to world position first
+	float shadowFactor = CalcShadowFactor(shadowPosH);
+	float3 viewDir = normalize(-position.xyz);
+	float ao = gSSAOMap.Sample(gLinearSample, pin.TexCoord).r;
+	float4 ambient = /*0.1f **/ albedo * ao;
+	
 	float4 directLight = ComputeLighting(gLights, albedo, fresnelShininess.rgb, fresnelShininess.a, position.xyz, normal.xyz, viewDir, shadowFactor);
-	float4 litColor = directLight;//(ambient + directLight);
+	
+	float4 litColor = (ambient + directLight);
 
-	litColor.a = albedo.a;
+	litColor.a = 1.0f;// albedo.a;
 	
 	float gamma = 2.2f;
 	litColor.rgb = pow(litColor.rgb, float3(1.0f/gamma, 1.0f / gamma, 1.0f / gamma));

@@ -236,7 +236,7 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
     optClear.DepthStencil.Depth = 1.0f;
     optClear.DepthStencil.Stencil = 0;
     auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    ThrowIfFailed(Device->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optClear, IID_PPV_ARGS(&mDepthStencilBuffer)));
+    ThrowIfFailed(Device->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_GENERIC_READ, &optClear, IID_PPV_ARGS(&mDepthStencilBuffer)));
     mDepthStencilBuffer->SetName(L"Depth Stencil Buffer");
     mDepthHandle = ResourceManager::Get().AllocDepthStencilResource();
     Device->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, mDepthHandle);
@@ -278,23 +278,4 @@ void D3DApp::FlushCommandQueue()
         WaitForSingleObject(eventHandle, INFINITE);
         CloseHandle(eventHandle);
     }
-}
-
-ComPtr<ID3DBlob> D3DApp::LoadBinary(const std::string& filename)
-{
-    std::ifstream fin(filename, std::ios::binary);
-    ComPtr<ID3DBlob> blob;
-    if (fin.is_open())
-    {
-        fin.seekg(0, std::ios_base::end);
-        std::ifstream::pos_type size = (int)fin.tellg();
-        fin.seekg(0, std::ios_base::beg);
-
-        ThrowIfFailed(D3DCreateBlob(size, &blob));
-
-        fin.read((char*)blob->GetBufferPointer(), size);
-        fin.close();
-    }
-    
-    return blob;
 }

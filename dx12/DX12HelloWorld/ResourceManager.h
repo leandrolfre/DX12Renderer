@@ -36,7 +36,8 @@ public:
 	CD3DX12_CPU_DESCRIPTOR_HANDLE AllocDepthStencilResource();
 	ID3D12DescriptorHeap* DescriptorHeaps();
 	ComPtr<ID3D12Resource> CreateDefaultBuffer(const void* initData, UINT64 byteSize, ComPtr<ID3D12Resource>& uploadBuffer, ID3D12GraphicsCommandList* cmdList);
-
+	void CreateDefaultBuffer(const void* initData, UINT64 byteSize, ComPtr<ID3D12Resource>& resource, ComPtr<ID3D12Resource>& uploadBuffer, ID3D12GraphicsCommandList* cmdList);
+	ComPtr<ID3DBlob> LoadBinary(const std::string& filename);
 private:
 	ResourceManager();
 	~ResourceManager() = default;

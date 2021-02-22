@@ -19,7 +19,7 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
     }
 
     auto Device = RenderContext::Get().Device();
-    mCam.SetPosition(4.0f, 10.0f, -15.0f);
+    mCam.SetPosition(0.0f, 0.0f, 0.0f);
     mCam.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 
     mShadowMap = std::make_unique<ShadowMap>(4096, 4096);
@@ -29,6 +29,9 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
 
     //mBlurFilter = std::make_unique<BlurFilter>(Device, mClientWidth, mClientHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
     // Reset the command list to prep for initialization commands.
+
+    mSSAO = std::make_unique<SSAO>();
+    
     ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 
     BuildRootSignature();
@@ -38,6 +41,8 @@ bool D3DAppHelloWorld::Initialize(WNDPROC proc)
     BuildScene();
     BuildFrameResources();
     BuildPSO();
+
+    mSSAO->init(mClientWidth, mClientHeight, mCam.GetProj4x4f());
 
     // Setup Dear ImGui
     IMGUI_CHECKVERSION();
@@ -136,18 +141,20 @@ void D3DAppHelloWorld::BuildBlurRootSignature()
 void D3DAppHelloWorld::BuildScreenRootSignature()
 {
     auto Device = RenderContext::Get().Device();
-    CD3DX12_DESCRIPTOR_RANGE table[3];
+    CD3DX12_DESCRIPTOR_RANGE table[4];
     table[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 2);
     table[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
     table[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
+    table[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0);
     
-    CD3DX12_ROOT_PARAMETER rootParameter[5];
+    CD3DX12_ROOT_PARAMETER rootParameter[6];
     rootParameter[0].InitAsConstantBufferView(0); //Object
-    rootParameter[1].InitAsDescriptorTable(1, &table[0], D3D12_SHADER_VISIBILITY_PIXEL);
-    rootParameter[2].InitAsConstantBufferView(1); //Pass
+    rootParameter[1].InitAsConstantBufferView(1); //Pass
+    rootParameter[2].InitAsDescriptorTable(1, &table[0], D3D12_SHADER_VISIBILITY_PIXEL); //GBuffer
     rootParameter[3].InitAsDescriptorTable(1, &table[1], D3D12_SHADER_VISIBILITY_PIXEL); //CubeMap
     rootParameter[4].InitAsDescriptorTable(1, &table[2], D3D12_SHADER_VISIBILITY_PIXEL); //ShadowMap
-    CD3DX12_ROOT_SIGNATURE_DESC rootScreenSigDesc(5, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    rootParameter[5].InitAsDescriptorTable(1, &table[3], D3D12_SHADER_VISIBILITY_PIXEL); //SSAOMap
+    CD3DX12_ROOT_SIGNATURE_DESC rootScreenSigDesc(6, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2];
     StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
     StaticSamplers[1].Init(1,
@@ -172,17 +179,18 @@ void D3DAppHelloWorld::BuildRootSignature()
 
 void D3DAppHelloWorld::BuildShadersAndInputLayout()
 {
-    mvsByteCode = LoadBinary("Shaders/color_SD_vs.cso");
-    mpsByteCode = LoadBinary("Shaders/color_SD_ps.cso");
-    mcsHorizontalByteCode = LoadBinary("Shaders/horzBlur_CS_cs.cso");
-    mcsVerticalByteCode = LoadBinary("Shaders/vertBlur_CS_cs.cso");
-    mSkyVsByteCode = LoadBinary("Shaders/sky_SD_vs.cso");
-    mSkyPsByteCode = LoadBinary("Shaders/sky_SD_ps.cso");
+    auto& rm = ResourceManager::Get();
+    mvsByteCode = rm.LoadBinary("Shaders/color_SD_vs.cso");
+    mpsByteCode = rm.LoadBinary("Shaders/color_SD_ps.cso");
+    mcsHorizontalByteCode = rm.LoadBinary("Shaders/horzBlur_CS_cs.cso");
+    mcsVerticalByteCode = rm.LoadBinary("Shaders/vertBlur_CS_cs.cso");
+    mSkyVsByteCode = rm.LoadBinary("Shaders/sky_SD_vs.cso");
+    mSkyPsByteCode = rm.LoadBinary("Shaders/sky_SD_ps.cso");
 
-    mQuadVsByteCode = LoadBinary("Shaders/quad_SD_vs.cso");
-    mQuadPsByteCode = LoadBinary("Shaders/quad_SD_ps.cso");
+    mQuadVsByteCode = rm.LoadBinary("Shaders/quad_SD_vs.cso");
+    mQuadPsByteCode = rm.LoadBinary("Shaders/quad_SD_ps.cso");
 
-    mShadowVSByteCode = LoadBinary("Shaders/shadow_SD_vs.cso");
+    mShadowVSByteCode = rm.LoadBinary("Shaders/shadow_SD_vs.cso");
     UINT byteOffset = 0;
     mInputLayout =
     {
@@ -300,12 +308,18 @@ void D3DAppHelloWorld::BuildPSO()
     skyPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     skyPsoDesc.VS = { reinterpret_cast<BYTE*>(mSkyVsByteCode->GetBufferPointer()), mSkyVsByteCode->GetBufferSize() };
     skyPsoDesc.PS = { reinterpret_cast<BYTE*>(mSkyPsByteCode->GetBufferPointer()), mSkyPsByteCode->GetBufferSize() };
+    skyPsoDesc.NumRenderTargets = 1;
+    skyPsoDesc.RTVFormats[0] = mBackBufferFormat;
+    for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
+    {
+        skyPsoDesc.RTVFormats[i + 1] = DXGI_FORMAT_UNKNOWN;
+    }
     ThrowIfFailed(Device->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC screenPsoDesc = psoDesc;
     screenPsoDesc.pRootSignature = mScreenRootSignature.Get();
     screenPsoDesc.RasterizerState.DepthClipEnable = false;
-    screenPsoDesc.RasterizerState.DepthClipEnable = false;
+    screenPsoDesc.DepthStencilState.DepthEnable = false;
     screenPsoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
     screenPsoDesc.VS = { reinterpret_cast<BYTE*>(mQuadVsByteCode->GetBufferPointer()), mQuadVsByteCode->GetBufferSize() };
     screenPsoDesc.PS = { reinterpret_cast<BYTE*>(mQuadPsByteCode->GetBufferPointer()), mQuadPsByteCode->GetBufferSize() };
@@ -367,7 +381,7 @@ void D3DAppHelloWorld::BuildScene()
         {
             XMFLOAT3 lightPos;
             XMStoreFloat3(&lightPos, MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi));
-            XMStoreFloat4x4(&mesh->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
+            XMStoreFloat4x4(&mesh->World, XMMatrixScaling(1.04f, 1.04f, 1.04f) * XMMatrixTranslation(lightPos.x, lightPos.y * 7.0f, lightPos.z));
             mLightBox = mesh.get();
         }
         mesh->UploadData(mCommandList.Get());
@@ -375,7 +389,7 @@ void D3DAppHelloWorld::BuildScene()
     }
 
     auto skyRItem = std::make_unique<Mesh>(meshes["sphere"], mMaterials["sky"].get());
-    XMStoreFloat4x4(&skyRItem->World, XMMatrixScaling(50.0f, 50.0f, 50.0f));
+    XMStoreFloat4x4(&skyRItem->World, XMMatrixScaling(1.0f, 1.0f, 1.0f));
     skyRItem->UploadData(mCommandList.Get());
     mLayerRItems[(int)RenderLayer::Sky].push_back(std::move(skyRItem));
 
@@ -421,8 +435,8 @@ void D3DAppHelloWorld::BuildMaterials()
     std::vector<std::wstring> texPaths = {
         L"Texture/pbr/beaten-up-metal1-albedo.dds",
         L"Texture/pbr/beaten-up-metal1-Normal-dx.dds",
-        L"Texture/bricks2.dds",
-        L"Texture/bricks2_nmap.dds",
+        L"Texture/bricks.dds",
+        L"Texture/bricks_nmap.dds",
         L"Texture/hsquareCM.dds"
     };
 
@@ -433,9 +447,9 @@ void D3DAppHelloWorld::BuildMaterials()
     floor->DiffuseAlbedo = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
     floor->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
     floor->Roughness = 0.05f;
-    floor->TextureHandle = CreateTextureSRV(texPaths[2], false);
-    CreateTextureSRV(texPaths[3], false);
-    floor->hasNormalMap = 0;
+    floor->TextureHandle = CreateTextureSRV(texPaths[0], false);
+    CreateTextureSRV(texPaths[1], false);
+    floor->hasNormalMap = 1;
     
 
     auto lightbox = std::make_unique<Material>();
@@ -537,7 +551,7 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     );
 
     XMMATRIX S = lightView * lightProj * T;
-    //XMStoreFloat4x4(&mLightBox->World, XMMatrixScaling(0.04f, 0.04f, 0.04f) * XMMatrixTranslation(lightPos, lightPos.y * 7.0f, lightPos.z));
+    XMStoreFloat4x4(&mLightBox->World, XMMatrixScaling(.04f, .04f, .04f) * XMMatrixTranslation(XMVectorGetX(lightDir), XMVectorGetY(lightDir) * 7.0f, XMVectorGetZ(lightDir)));
     
     XMStoreFloat4x4(&mMainPassCB.View, view);
     XMStoreFloat4x4(&mMainPassCB.InvView, invView);
@@ -545,7 +559,7 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     XMStoreFloat4x4(&mMainPassCB.InvProj, invProj);
     XMStoreFloat4x4(&mMainPassCB.ViewProj, viewProj);
     XMStoreFloat4x4(&mMainPassCB.InvViewProj, invViewProj);
-    XMStoreFloat3(&mMainPassCB.Lights[0].Direction, lightDir);
+    XMStoreFloat3(&mMainPassCB.Lights[0].Direction, XMVector4Transform(lightDir, view));
     XMStoreFloat4x4(&mMainPassCB.Lights[0].ShadowViewProj, XMMatrixMultiply(lightView, lightProj));
     XMStoreFloat4x4(&mMainPassCB.Lights[0].ShadowTransform, S);
 
@@ -617,6 +631,7 @@ void D3DAppHelloWorld::Render()
     static int blurPasses = 1;
     static float reflective = mMaterials["sphere"]->FresnelR0.x;
     static float roughness = mMaterials["sphere"]->Roughness;
+    static float roughnessFloor = mMaterials["floor"]->Roughness;
     // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
     {
         ImGui::Begin("Test");                          // Create a window called "Hello, world!" and append into it.
@@ -628,17 +643,19 @@ void D3DAppHelloWorld::Render()
             mMaterials["sphere"]->FresnelR0.y = reflective;
             mMaterials["sphere"]->FresnelR0.z = reflective;
             mMaterials["sphere"]->NumFramesDirty = 3;
-
-            mMaterials["floor"]->FresnelR0.x = reflective;
-            mMaterials["floor"]->FresnelR0.y = reflective;
-            mMaterials["floor"]->FresnelR0.z = reflective;
-            mMaterials["floor"]->NumFramesDirty = 3;
         }
 
         if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f))
         {
             mMaterials["sphere"]->Roughness = roughness;
             mMaterials["sphere"]->NumFramesDirty = 3;
+           
+        }
+
+        if (ImGui::SliderFloat("Roughness Floor", &roughnessFloor, 0.0f, 1.0f))
+        {
+            mMaterials["floor"]->Roughness = roughnessFloor;
+            mMaterials["floor"]->NumFramesDirty = 3;
         }
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -653,6 +670,16 @@ void D3DAppHelloWorld::Render()
     BasePass();
     
     //postprocessingPipeline.run();
+
+    SSAOInputData inputData = { 
+        mCurrentFrameResource->GBuffer[int(GBuffer::Position)].get(), 
+        mCurrentFrameResource->GBuffer[int(GBuffer::Normal)].get(), 
+        mLayerRItems[int(RenderLayer::Fullscreen)][0].get(), 
+        mCurrentFrameResource->ObjectCB.get()
+    };
+    PIXBeginEvent(mCommandList.Get(), PIX_COLOR(0, 0, 0), "SSAO");
+    mSSAO->run(inputData);
+    PIXEndEvent();
     
     CompositePass();
     
@@ -706,7 +733,7 @@ void D3DAppHelloWorld::OnKeyboardInput()
 void D3DAppHelloWorld::BasePass()
 {
     PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Base Pass");
-
+   
     mCommandList->OMSetRenderTargets(4, &mCurrentFrameResource->GBuffer[0]->CpuRtv, true, &mDepthHandle);
 
     ID3D12DescriptorHeap* descriptorHeaps[] = { ResourceManager::Get().DescriptorHeaps()/*, mUISrvDescriptorHeap.Get()*/ };
@@ -724,37 +751,56 @@ void D3DAppHelloWorld::BasePass()
     mCommandList->SetPipelineState(mPSOs["opaque"].Get());
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
 
-    mCommandList->SetPipelineState(mPSOs["sky"].Get());
+    /*mCommandList->SetPipelineState(mPSOs["sky"].Get());
     mCommandList->SetGraphicsRootDescriptorTable(4, mCubeMapHandle);
-    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);*/
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-                                                                           D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON));
+    /*mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
+                                                                           D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));*/
 
     for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
     {
         mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->GBuffer[i]->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
     }
     
-    PIXEndEvent();
+    //PIXEndEvent();
+}
+
+void D3DAppHelloWorld::RenderSky()
+{
+    mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+    mCommandList->SetPipelineState(mPSOs["sky"].Get());
+    mCommandList->SetGraphicsRootDescriptorTable(4, mCubeMapHandle);
+    DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Sky]);
 }
 
 void D3DAppHelloWorld::CompositePass()
 {
     PIXBeginEvent(mCommandList.Get(), PIX_COLOR(255, 0, 0), "Composite Pass");
+
     //mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCurrentFrameResource->RT[0]->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+    D3D12_VIEWPORT screenViewport = { 0.0f, 0.0f, static_cast<FLOAT>(mClientWidth), static_cast<FLOAT>(mClientHeight), 0.0f, 1.0f };
+    mCommandList->RSSetViewports(1, &screenViewport);
+    RECT scissorRect = { 0L, 0L, static_cast<LONG>(mClientWidth), static_cast<LONG>(mClientHeight) };
+    mCommandList->RSSetScissorRects(1, &scissorRect);
+    mCommandList->OMSetRenderTargets(1, &mBackbufferHandles[mCurrentBufferIndex], true, &mDepthHandle);
+
     mCommandList->SetGraphicsRootSignature(mScreenRootSignature.Get());
     mCommandList->SetPipelineState(mPSOs["screen"].Get());
-    mCommandList->SetGraphicsRootDescriptorTable(1, mCurrentFrameResource->GBuffer[0]->GpuSrv);
+    mCommandList->SetGraphicsRootDescriptorTable(2, mCurrentFrameResource->GBuffer[0]->GpuSrv);
     auto passCB = mCurrentFrameResource->PassCB->Resource();
-    mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+    mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
     //Save cubemap handle info elsewhere
     mCommandList->SetGraphicsRootDescriptorTable(3, mCubeMapHandle);
     mCommandList->SetGraphicsRootDescriptorTable(4, mShadowMap->Srv());
-    mCommandList->OMSetRenderTargets(1, &mBackbufferHandles[mCurrentBufferIndex], true, nullptr);
+    mCommandList->SetGraphicsRootDescriptorTable(5, mSSAO->SSAOMap);
+    
 
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Fullscreen]);
-    PIXEndEvent();
+
+    RenderSky();
+
+    //PIXEndEvent();
 }
 
 void D3DAppHelloWorld::ShadowPass()
@@ -777,7 +823,7 @@ void D3DAppHelloWorld::ShadowPass()
     DrawRenderItems(mCommandList.Get(), mLayerRItems[(int)RenderLayer::Opaque]);
 
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
-    PIXEndEvent();
+    //PIXEndEvent();
 }
 
 void D3DAppHelloWorld::BeginRender()
@@ -789,7 +835,6 @@ void D3DAppHelloWorld::BeginRender()
 
     D3D12_VIEWPORT screenViewport = { 0.0f, 0.0f, static_cast<FLOAT>(mClientWidth), static_cast<FLOAT>(mClientHeight), 0.0f, 1.0f };
     mCommandList->RSSetViewports(1, &screenViewport);
-
     RECT scissorRect = { 0L, 0L, static_cast<LONG>(mClientWidth), static_cast<LONG>(mClientHeight) };
     mCommandList->RSSetScissorRects(1, &scissorRect);
 
@@ -802,7 +847,7 @@ void D3DAppHelloWorld::BeginRender()
     
     // Transition the resource from its initial state to be used as a depth buffer.
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-                                                                           D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+                                                                           D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 
     //mCommandList->ClearRenderTargetView(mCurrentFrameResource->RT[0]->CpuRtv, clearColor, 0, nullptr);
     for (int i = 0; i < int(GBuffer::NumGBuffer); ++i)
@@ -816,6 +861,8 @@ void D3DAppHelloWorld::BeginRender()
 
 void D3DAppHelloWorld::EndRender()
 {
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
+                                                                           D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffers[mCurrentBufferIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
     ThrowIfFailed(mCommandList->Close());

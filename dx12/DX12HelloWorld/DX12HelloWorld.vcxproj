@@ -101,6 +101,10 @@
     <PreBuildEvent>
       <Command>call shaderCompile</Command>
     </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -169,6 +173,7 @@
     <ClCompile Include="RenderTarget.cpp" />
     <ClCompile Include="ResourceManager.cpp" />
     <ClCompile Include="ShadowMap.cpp" />
+    <ClCompile Include="SSAO.cpp" />
     <ClCompile Include="Texture.cpp" />
     <ClCompile Include="TextureManager.cpp" />
   </ItemGroup>
@@ -198,6 +203,7 @@
     <ClInclude Include="RenderTarget.h" />
     <ClInclude Include="ResourceManager.h" />
     <ClInclude Include="ShadowMap.h" />
+    <ClInclude Include="SSAO.h" />
     <ClInclude Include="Texture.h" />
     <ClInclude Include="TextureManager.h" />
   </ItemGroup>

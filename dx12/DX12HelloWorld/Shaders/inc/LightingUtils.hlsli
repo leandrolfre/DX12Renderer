@@ -14,6 +14,7 @@ struct Light
 
 TextureCube gCubeMap : register(t0);
 Texture2D gShadowMap : register(t1);
+Texture2D gSSAOMap : register(t2);
 SamplerState gLinearSample : register(s0);
 SamplerComparisonState gShadowSample : register(s1);
 

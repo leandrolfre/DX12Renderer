@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "Mesh.h"
 #include "ShadowMap.h"
+#include "SSAO.h"
 
 using namespace DirectX;
 
@@ -55,6 +56,7 @@ private:
 	void OnKeyboardInput();
 	void BasePass();
 	void CompositePass();
+	void RenderSky();
 	void ShadowPass();
 	void BeginRender();
 	void EndRender();
@@ -82,6 +84,7 @@ private:
 	ComPtr<ID3DBlob> mQuadPsByteCode;
 	ComPtr<ID3DBlob> mShadowVSByteCode;
 	std::unique_ptr<ShadowMap> mShadowMap;
+	std::unique_ptr<SSAO> mSSAO;
 	FrameResource* mCurrentFrameResource = nullptr;
 	Mesh* mLightBox;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mCubeMapHandle;

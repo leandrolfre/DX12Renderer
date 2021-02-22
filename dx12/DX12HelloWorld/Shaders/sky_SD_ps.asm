@@ -31,7 +31,6 @@ dcl_sampler S0[0:0], mode_default, space=0
 dcl_resource_texturecube (float,float,float,float) T0[0:0], space=0
 dcl_input_ps linear v1.xyz
 dcl_output o0.xyzw
-dcl_temps 1
 //
 // Initial variable locations:
 //   v0.x <- pin.PosH.x; v0.y <- pin.PosH.y; v0.z <- pin.PosH.z; v0.w <- pin.PosH.w; 
@@ -39,9 +38,6 @@ dcl_temps 1
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
 #line 34 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\sky_SD.hlsl"
-sample r0.xyzw, v1.xyzx, T0[0].xyzw, S0[0]
-log r0.xyzw, r0.xyzw
-mul r0.xyzw, r0.xyzw, l(2.200000, 2.200000, 2.200000, 2.200000)
-exp o0.xyzw, r0.xyzw
+sample o0.xyzw, v1.xyzx, T0[0].xyzw, S0[0]
 ret 
-// Approximately 5 instruction slots used
+// Approximately 2 instruction slots used
