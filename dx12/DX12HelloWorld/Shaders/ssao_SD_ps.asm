@@ -69,8 +69,10 @@ dcl_temps 7
 //
 #line 51 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\ssao_SD.hlsl"
 mul r0.xy, v1.xyxx, CB0[0][0].xyxx
-sample r0.xyz, r0.xyxx, T2[2].yzxw, S0[0]
-mov r0.xyz, r0.xyzx  // r0.x <- randomVec.y; r0.y <- randomVec.z; r0.z <- randomVec.x
+sample r0.xyz, r0.xyxx, T2[2].xyzw, S0[0]
+mul r0.xyz, r0.yzxy, l(2.000000, 2.000000, 2.000000, 0.000000)
+mov r1.xyz, l(-1.000000,-1.000000,-1.000000,-0.000000)
+add r0.xyz, r0.xyzx, r1.xyzx  // r0.x <- randomVec.y; r0.y <- randomVec.z; r0.z <- randomVec.x
 
 #line 52
 sample r1.xyz, v1.xyxx, T0[0].xyzw, S1[1]
@@ -198,4 +200,4 @@ add r0.x, r0.x, l(1.000000)  // r0.x <- occlusion
 #line 76
 mov o0.x, r0.x
 ret 
-// Approximately 88 instruction slots used
+// Approximately 90 instruction slots used

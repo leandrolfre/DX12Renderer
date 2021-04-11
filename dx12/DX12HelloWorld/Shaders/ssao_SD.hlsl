@@ -48,7 +48,7 @@ float2 noiseScale = float2(1920.0f / 4.0f, 1080.0f / 4.0f);
 float PS(VertexOut pin) : SV_Target
 {
 	
-	float3 randomVec = gNoise.Sample(gLinearSample, pin.TexCoord * noiseScale).xyz;
+	float3 randomVec = gNoise.Sample(gLinearSample, pin.TexCoord * noiseScale).xyz * 2.0f - 1.0f;
 	float3 position = GBufferPosition.Sample(gPointSample, pin.TexCoord).xyz;
 	float3 normal = normalize(GBufferNormal.Sample(gPointSample, pin.TexCoord).xyz);
 	float3 tangent = normalize(randomVec - dot(randomVec, normal) * normal);
