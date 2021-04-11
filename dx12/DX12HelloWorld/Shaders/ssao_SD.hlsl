@@ -25,7 +25,7 @@ cbuffer cbPerObject : register(b0)
 cbuffer cbSSAOKernel : register(b1)
 {
 	float4x4 gProjection;
-	float4 gSamples[64];
+	float4 gSamples[128];
 };
 
 Texture2D GBufferPosition	: register(t0);
@@ -48,19 +48,20 @@ float2 noiseScale = float2(1920.0f / 4.0f, 1080.0f / 4.0f);
 float PS(VertexOut pin) : SV_Target
 {
 	
-	float3 randomVec = gNoise.Sample(gLinearSample, pin.TexCoord * noiseScale).xyz;
+	float3 randomVec = gNoise.Sample(gLinearSample, pin.TexCoord * noiseScale).xyz * 2.0f - 1.0f;
 	float3 position = GBufferPosition.Sample(gPointSample, pin.TexCoord).xyz;
 	float3 normal = normalize(GBufferNormal.Sample(gPointSample, pin.TexCoord).xyz);
 	float3 tangent = normalize(randomVec - dot(randomVec, normal) * normal);
-	float3 bitangent = cross(normal, tangent);
+	float3 bitangent = cross(tangent, normal);
 	float3x3 tbn = {tangent, bitangent, normal};
 	
 	float occlusion = 0.0f;
-	float radius = 0.9f;
-	float bias = 0.05f;
-	for (int i = 0; i < 64; ++i)
+	float radius = 0.2f;
+	float bias = 0.01f;
+	float power = 5.5f;
+	for (int i = 0; i < 128; ++i)
 	{
-		float3 samplePos = mul(gSamples[i].xyz, tbn );
+		float3 samplePos = mul(gSamples[i].xyz, tbn);
 		samplePos = position + samplePos * radius;
 		
 		float4 offset = mul(gProjection, float4(samplePos, 1.0f));
@@ -72,6 +73,6 @@ float PS(VertexOut pin) : SV_Target
 		float rangeCheck = smoothstep(0.0f, 1.0f, radius/abs(position.z - sampleDepth));
 		occlusion += (sampleDepth <= samplePos.z - bias ? 1.0f : 0.0f) * rangeCheck;
 	}
-	occlusion = 1.0f - (occlusion / 64.0f);
-	return occlusion;
+	occlusion = 1.0f - (occlusion / 128.0f);
+	return pow(occlusion, power);
 }

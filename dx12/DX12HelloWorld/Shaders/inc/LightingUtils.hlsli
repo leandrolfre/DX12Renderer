@@ -40,15 +40,8 @@ float3 BlinnPhong(float3 lightStrength, float3 lightDir, float3 normal, float3 v
 	float3 halfVec = normalize(viewDir+lightDir);
 	float specStrength = 0.8f;
 	float3 specular = pow(max(dot(normal, halfVec), 0.0f), m) * specStrength * lightStrength;
-	//return (lightStrength * mat.DiffuseAlbedo.rgb + specular);
+	
 	return lerp(lightStrength * DiffuseAlbedo.rgb, reflectColor, FresnelR0) + specular;
-	
-	/*float roughnessFactor = (m + 8.0f) * pow(max(dot(halfVec, normal), 0.0f), m) / 8.0f;
-	float3 fresnelFactor = SchlickFresnel(mat.FresnelR0, normal, lightDir);
-	float3 specAlbedo = fresnelFactor * roughnessFactor;
-	specAlbedo = specAlbedo / (specAlbedo + 1.0f);
-	
-	return (mat.DiffuseAlbedo.rgb + specAlbedo) * lightStrength;*/
 }
 
 float3 ComputeDirectionalLight(Light light, float4 DiffuseAlbedo, float3 FresnelR0, float Shininess, float3 normal, float3 viewDir)

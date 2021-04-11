@@ -15,6 +15,11 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
 
     mWidth = Width;
     mHeight = Height;
+
+    KernelSize = 128;
+    Radius = 0.9f;
+    Bias = 0.1f;
+    Power = 1.0f;
     
     //load shader
     mVShader = ResourceManager::Get().LoadBinary("Shaders/ssao_SD_vs.cso");
@@ -35,7 +40,7 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
 
     CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2];
-    StaticSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+    StaticSamplers[0].Init(0);// , D3D12_FILTER_MIN_MAG_MIP_LINEAR);
     StaticSamplers[1].Init(1, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
     rootSigDesc.NumStaticSamplers = 2;
     rootSigDesc.pStaticSamplers = StaticSamplers;
@@ -51,6 +56,35 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
 
     ThrowIfFailed(hr);
     ThrowIfFailed(Device->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+
+    //Blur Pass Root Signature
+    mVBlurShader = ResourceManager::Get().LoadBinary("Shaders/ssaoBlur_SD_vs.cso");
+    mPBlurShader = ResourceManager::Get().LoadBinary("Shaders/ssaoBlur_SD_ps.cso");
+
+    CD3DX12_DESCRIPTOR_RANGE rangeBlur[1];
+    rangeBlur[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); //SSAOMap
+    
+    CD3DX12_ROOT_PARAMETER slotRootParameterBlur[2];
+    slotRootParameterBlur[0].InitAsConstantBufferView(0); //quad Object
+    slotRootParameterBlur[1].InitAsDescriptorTable(1, &rangeBlur[0], D3D12_SHADER_VISIBILITY_PIXEL); //SRVs
+    
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDescBlur(2, slotRootParameterBlur, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC StaticSamplersBlur[1];
+    StaticSamplersBlur[0].Init(0);// , D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+    rootSigDescBlur.NumStaticSamplers = 1;
+    rootSigDescBlur.pStaticSamplers = StaticSamplersBlur;
+
+    ComPtr<ID3DBlob> serializedRootSigBlur = nullptr;
+    ComPtr<ID3DBlob> errorBlobBlur = nullptr;
+
+    HRESULT hrBlur = D3D12SerializeRootSignature(&rootSigDescBlur, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSigBlur.GetAddressOf(), errorBlobBlur.GetAddressOf());
+    if (errorBlobBlur != nullptr)
+    {
+        ::OutputDebugStringA((char*)errorBlobBlur->GetBufferPointer());
+    }
+
+    ThrowIfFailed(hrBlur);
+    ThrowIfFailed(Device->CreateRootSignature(0, serializedRootSigBlur->GetBufferPointer(), serializedRootSigBlur->GetBufferSize(), IID_PPV_ARGS(mBlurRootSignature.GetAddressOf())));
 
     //create pso
     
@@ -133,6 +167,29 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
 
     ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPso)));
 
+    //Create Blur PSO
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoBlurDesc;
+    ZeroMemory(&psoBlurDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+
+    psoBlurDesc.InputLayout = { InputLayout.data(), static_cast<UINT>(InputLayout.size()) };
+    psoBlurDesc.pRootSignature = mBlurRootSignature.Get();
+    psoBlurDesc.VS = { reinterpret_cast<BYTE*>(mVBlurShader->GetBufferPointer()), mVBlurShader->GetBufferSize() };
+    psoBlurDesc.PS = { reinterpret_cast<BYTE*>(mPBlurShader->GetBufferPointer()), mPBlurShader->GetBufferSize() };
+    psoBlurDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoBlurDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoBlurDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    psoBlurDesc.DepthStencilState.DepthEnable = false;
+    psoBlurDesc.SampleMask = UINT_MAX;
+    psoBlurDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoBlurDesc.NumRenderTargets = 1;
+    psoBlurDesc.RTVFormats[0] = DXGI_FORMAT_R16_FLOAT;
+    psoBlurDesc.SampleDesc.Count = 1;
+    psoBlurDesc.SampleDesc.Quality = 0;
+    psoBlurDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mBlurPso)));
+
     //create CBV with random Samples over the hemisphere
     std::uniform_real_distribution<float> randomFloats(0.0f, 1.0f);
     std::default_random_engine generator;
@@ -143,12 +200,12 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
     struct SSAOConstData
     {
         DirectX::XMFLOAT4X4 Projection;
-        DirectX::XMFLOAT4 kernel[64];
+        DirectX::XMFLOAT4 kernel[128];
     };
 
     SSAOConstData constData;
     constData.Projection = Projection;
-    for (int i = 0; i < 64; ++i)
+    for (int i = 0; i < KernelSize; ++i)
     {
         DirectX::XMVECTOR Sample = DirectX::XMVectorSet
         (
@@ -160,7 +217,7 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
 
         Sample = DirectX::XMVector4Normalize(Sample);
         Sample = DirectX::XMVectorScale(Sample, randomFloats(generator));
-        float scale = (float)i / 64.0f;
+        float scale = (float)i / (float)KernelSize;
         scale = lerp(0.1f, 1.0f, scale * scale);
         Sample = DirectX::XMVectorScale(Sample, scale);
         DirectX::XMFLOAT4 KernelSample;
@@ -174,14 +231,21 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
     //create SRV noise texture
     for (int i = 0; i < 16; ++i)
     {
-        mSSAONoise[i] = DirectX::PackedVector::XMHALF4(
+        /*mSSAONoise[i] = DirectX::PackedVector::XMHALF4(
+            randomFloats(generator) * 2.0f - 1.0f,
+            randomFloats(generator) * 2.0f - 1.0f,
+            0.0f,
+            0.0f);*/
+
+        mSSAONoise[i] = DirectX::XMFLOAT4(
             randomFloats(generator) * 2.0f - 1.0f,
             randomFloats(generator) * 2.0f - 1.0f,
             0.0f,
             0.0f);
     }
 
-    Texture* NoiseTexture = TextureManager::Get().CreateTexture(L"NoiseTexture", 4, 4, DXGI_FORMAT_R16G16B16A16_FLOAT, &mSSAONoise, 64);
+    //Texture* NoiseTexture = TextureManager::Get().CreateTexture(L"NoiseTexture", 4, 4, DXGI_FORMAT_R16G16B16A16_FLOAT, &mSSAONoise, 64);
+    Texture* NoiseTexture = TextureManager::Get().CreateTexture(L"NoiseTexture", 4, 4, DXGI_FORMAT_R32G32B32A32_FLOAT, &mSSAONoise, 128);
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     ZeroMemory(&srvDesc, sizeof(D3D12_SHADER_RESOURCE_VIEW_DESC));
 
@@ -198,6 +262,7 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
     mNoiseHandle = ResourceManager::Get().AllocGPUShaderResource();
 
     mSSAOMap = std::make_unique<RenderTarget>(mWidth, mHeight, DXGI_FORMAT_R16_FLOAT);
+    mSSAOBlurMap = std::make_unique<RenderTarget>(mWidth, mHeight, DXGI_FORMAT_R16_FLOAT);
     SSAOMap = mSSAOMap->GpuSrv;
 }
 
@@ -209,13 +274,14 @@ void SSAO::run(const SSAOInputData& InputData)
     mCommandList->RSSetScissorRects(1, &scissorRect);
     
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSSAOMap->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSSAOBlurMap->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
     float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     mCommandList->ClearRenderTargetView(mSSAOMap->CpuRtv, clearColor, 0, nullptr);
-    mCommandList->OMSetRenderTargets(1, &mSSAOMap->CpuRtv, false, nullptr);
+    mCommandList->ClearRenderTargetView(mSSAOBlurMap->CpuRtv, clearColor, 0, nullptr);
 
-    
-    
+    mCommandList->OMSetRenderTargets(1, &mSSAOBlurMap->CpuRtv, false, nullptr);
+
     mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
     mCommandList->SetPipelineState(mPso.Get());
     
@@ -227,5 +293,20 @@ void SSAO::run(const SSAOInputData& InputData)
 
     InputData.Quad->Draw(mCommandList.Get(), InputData.ObjectCB);
 
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSSAOBlurMap->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+
+
+    //Blur pass
+    mCommandList->OMSetRenderTargets(1, &mSSAOMap->CpuRtv, false, nullptr);
+
+    mCommandList->SetGraphicsRootSignature(mBlurRootSignature.Get());
+    mCommandList->SetPipelineState(mBlurPso.Get());
+
+    //Bind resources
+    mCommandList->SetGraphicsRootDescriptorTable(1, mSSAOBlurMap->GpuSrv);
+    
+    InputData.Quad->Draw(mCommandList.Get(), InputData.ObjectCB);
+
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSSAOMap->Resource(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ));
+
 }

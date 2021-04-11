@@ -34,18 +34,28 @@ public:
     
 public:
     CD3DX12_GPU_DESCRIPTOR_HANDLE SSAOMap;
+    UINT32 KernelSize;
+    float Power;
+    float Radius;
+    float Bias;
 private:
-    DirectX::PackedVector::XMHALF4 mSSAONoise[16];
+    /*DirectX::PackedVector::XMHALF4 mSSAONoise[16];*/
+    DirectX::XMFLOAT4 mSSAONoise[16];
     UINT32 mWidth;
     UINT32 mHeight;
     std::unique_ptr<RenderTarget> mSSAOMap;
+    std::unique_ptr<RenderTarget> mSSAOBlurMap;
     ComPtr<ID3D12RootSignature> mRootSignature;
+    ComPtr<ID3D12RootSignature> mBlurRootSignature;
     ComPtr<ID3D12PipelineState> mPso;
+    ComPtr<ID3D12PipelineState> mBlurPso;
     ComPtr<ID3D12Resource> mKernelUploader;
     ComPtr<ID3D12Resource> mKernelBufferGPU;
     ComPtr<ID3D12GraphicsCommandList> mCommandList;
     ComPtr<ID3DBlob> mVShader;
     ComPtr<ID3DBlob> mPShader;
+    ComPtr<ID3DBlob> mVBlurShader;
+    ComPtr<ID3DBlob> mPBlurShader;
     CD3DX12_GPU_DESCRIPTOR_HANDLE mNoiseHandle;
 };
 

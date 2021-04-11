@@ -16,7 +16,7 @@
 // {
 //
 //   float4x4 gProjection;              // Offset:    0 Size:    64
-//   float4 gSamples[64];               // Offset:   64 Size:  1024
+//   float4 gSamples[128];              // Offset:   64 Size:  2048
 //
 // }
 //
@@ -52,7 +52,7 @@
 ps_5_1
 dcl_globalFlags refactoringAllowed | skipOptimization
 dcl_constantbuffer CB0[0:0][1], immediateIndexed, space=0
-dcl_constantbuffer CB1[1:1][68], dynamicIndexed, space=0
+dcl_constantbuffer CB1[1:1][132], dynamicIndexed, space=0
 dcl_sampler S0[0:0], mode_default, space=0
 dcl_sampler S1[1:1], mode_default, space=0
 dcl_resource_texture2d (float,float,float,float) T0[0:0], space=0
@@ -60,7 +60,7 @@ dcl_resource_texture2d (float,float,float,float) T1[1:1], space=0
 dcl_resource_texture2d (float,float,float,float) T2[2:2], space=0
 dcl_input_ps linear v1.xy
 dcl_output o0.x
-dcl_temps 7
+dcl_temps 8
 //
 // Initial variable locations:
 //   v0.x <- pin.PosH.x; v0.y <- pin.PosH.y; v0.z <- pin.PosH.z; v0.w <- pin.PosH.w; 
@@ -69,8 +69,10 @@ dcl_temps 7
 //
 #line 51 "C:\gamedev\DX12Renderer\dx12\DX12HelloWorld\Shaders\ssao_SD.hlsl"
 mul r0.xy, v1.xyxx, CB0[0][0].xyxx
-sample r0.xyz, r0.xyxx, T2[2].yzxw, S0[0]
-mov r0.xyz, r0.xyzx  // r0.x <- randomVec.y; r0.y <- randomVec.z; r0.z <- randomVec.x
+sample r0.xyz, r0.xyxx, T2[2].xyzw, S0[0]
+mul r0.xyz, r0.zxyz, l(2.000000, 2.000000, 2.000000, 0.000000)
+mov r1.xyz, l(-1.000000,-1.000000,-1.000000,-0.000000)
+add r0.xyz, r0.xyzx, r1.xyzx  // r0.x <- randomVec.z; r0.y <- randomVec.x; r0.z <- randomVec.y
 
 #line 52
 sample r1.xyz, v1.xyxx, T0[0].xyzw, S1[1]
@@ -80,31 +82,31 @@ mov r1.xyz, r1.xyzx  // r1.x <- position.x; r1.y <- position.y; r1.z <- position
 sample r2.xyz, v1.xyxx, T1[1].xyzw, S1[1]
 dp3 r0.w, r2.xyzx, r2.xyzx
 rsq r0.w, r0.w
-mul r2.xyz, r0.wwww, r2.xyzx  // r2.x <- normal.x; r2.y <- normal.y; r2.z <- normal.z
+mul r2.xyz, r0.wwww, r2.yxzy  // r2.x <- normal.y; r2.y <- normal.x; r2.z <- normal.z
 
 #line 54
-dp3 r0.w, r0.zxyz, r2.xyzx
-mul r3.xyz, r2.yzxy, r0.wwww
+dp3 r0.w, r0.zyxz, r2.xyzx
+mul r3.xyz, r2.zyxz, r0.wwww
 mov r3.xyz, -r3.xyzx
 add r0.xyz, r0.xyzx, r3.xyzx
 dp3 r0.w, r0.xyzx, r0.xyzx
 rsq r0.w, r0.w
-mul r0.xyz, r0.wwww, r0.xyzx  // r0.x <- tangent.y; r0.y <- tangent.z; r0.z <- tangent.x
+mul r0.xyz, r0.wwww, r0.xyzx  // r0.x <- tangent.z; r0.y <- tangent.x; r0.z <- tangent.y
 
 #line 55
-mul r3.xyz, r0.yzxy, r2.yzxy
-mul r4.xyz, r0.xyzx, r2.zxyz
+mul r3.xyz, r2.zyxz, r0.zxyz
+mul r4.xyz, r2.xzyx, r0.xyzx
 mov r4.xyz, -r4.xyzx
 add r3.xyz, r3.xyzx, r4.xyzx  // r3.x <- bitangent.x; r3.y <- bitangent.y; r3.z <- bitangent.z
 
 #line 56
-mov r4.x, r0.z  // r4.x <- tbn._m00
+mov r4.x, r0.y  // r4.x <- tbn._m00
 mov r4.y, r3.x  // r4.y <- tbn._m10
-mov r4.z, r2.x  // r4.z <- tbn._m20
-mov r5.x, r0.x  // r5.x <- tbn._m01
+mov r4.z, r2.y  // r4.z <- tbn._m20
+mov r5.x, r0.z  // r5.x <- tbn._m01
 mov r5.y, r3.y  // r5.y <- tbn._m11
-mov r5.z, r2.y  // r5.z <- tbn._m21
-mov r2.x, r0.y  // r2.x <- tbn._m02
+mov r5.z, r2.x  // r5.z <- tbn._m21
+mov r2.x, r0.x  // r2.x <- tbn._m02
 mov r2.y, r3.z  // r2.y <- tbn._m12
 mov r2.z, r2.z  // r2.z <- tbn._m22
 
@@ -112,90 +114,95 @@ mov r2.z, r2.z  // r2.z <- tbn._m22
 mov r0.x, l(0)  // r0.x <- occlusion
 
 #line 59
-mov r0.y, l(0.900000)  // r0.y <- radius
+mov r0.y, l(0.200000)  // r0.y <- radius
 
 #line 60
-mov r0.z, l(0.050000)  // r0.z <- bias
+mov r0.z, l(0.010000)  // r0.z <- bias
 
 #line 61
-mov r0.w, l(0)  // r0.w <- i
-mov r1.w, r0.x  // r1.w <- occlusion
-mov r2.w, r0.w  // r2.w <- i
-loop 
-  ilt r3.x, r2.w, l(64)
-  breakc_z r3.x
+mov r0.w, l(5.500000)  // r0.w <- power
 
-#line 63
-  dp3 r3.x, CB1[1][r2.w + 4].xyzx, r4.xyzx  // r3.x <- samplePos.x
-  dp3 r3.y, CB1[1][r2.w + 4].xyzx, r5.xyzx  // r3.y <- samplePos.y
-  dp3 r3.z, CB1[1][r2.w + 4].xyzx, r2.xyzx  // r3.z <- samplePos.z
+#line 62
+mov r1.w, l(0)  // r1.w <- i
+mov r2.w, r0.x  // r2.w <- occlusion
+mov r3.x, r1.w  // r3.x <- i
+loop 
+  ilt r3.y, r3.x, l(128)
+  breakc_z r3.y
 
 #line 64
-  mul r3.xyz, r0.yyyy, r3.xyzx
-  add r3.xyz, r1.xyzx, r3.xyzx  // r3.x <- samplePos.x; r3.y <- samplePos.y; r3.z <- samplePos.z
+  dp3 r6.x, CB1[1][r3.x + 4].xyzx, r4.xyzx  // r6.x <- samplePos.x
+  dp3 r6.y, CB1[1][r3.x + 4].xyzx, r5.xyzx  // r6.y <- samplePos.y
+  dp3 r6.z, CB1[1][r3.x + 4].xyzx, r2.xyzx  // r6.z <- samplePos.z
 
-#line 66
-  mul r6.xyz, r3.xxxx, CB1[1][0].xywx
-  mul r3.xyw, r3.yyyy, CB1[1][1].xyxw
-  add r3.xyw, r3.xyxw, r6.xyxz
-  mul r6.xyz, r3.zzzz, CB1[1][2].xywx
-  add r3.xyw, r3.xyxw, r6.xyxz
-  mul r6.xyz, CB1[1][3].xywx, l(1.000000, 1.000000, 1.000000, 0.000000)
-  add r3.xyw, r3.xyxw, r6.xyxz  // r3.x <- offset.x; r3.y <- offset.y; r3.w <- offset.w
+#line 65
+  mul r3.yzw, r0.yyyy, r6.xxyz
+  add r3.yzw, r1.xxyz, r3.yyzw  // r3.y <- samplePos.x; r3.z <- samplePos.y; r3.w <- samplePos.z
 
 #line 67
-  div r3.xy, r3.xyxx, r3.wwww
+  mul r6.xyz, r3.yyyy, CB1[1][0].xywx
+  mul r7.xyz, r3.zzzz, CB1[1][1].xywx
+  add r6.xyz, r6.xyzx, r7.xyzx
+  mul r7.xyz, r3.wwww, CB1[1][2].xywx
+  add r6.xyz, r6.xyzx, r7.xyzx
+  mul r7.xyz, CB1[1][3].xywx, l(1.000000, 1.000000, 1.000000, 0.000000)
+  add r6.xyz, r6.xyzx, r7.xyzx  // r6.x <- offset.x; r6.y <- offset.y; r6.z <- offset.w
 
 #line 68
-  mul r3.xy, r3.xyxx, l(0.500000, 0.500000, 0.000000, 0.000000)
-  add r3.xy, r3.xyxx, l(0.500000, 0.500000, 0.000000, 0.000000)
-  max r3.xy, r3.xyxx, l(0.000000, 0.000000, 0.000000, 0.000000)
-  min r6.xy, r3.xyxx, l(1.000000, 1.000000, 0.000000, 0.000000)  // r6.x <- offset.x; r6.y <- offset.y
+  div r3.yz, r6.xxyx, r6.zzzz  // r3.y <- offset.x; r3.z <- offset.y
 
 #line 69
-  mov r3.x, -r6.y
-  add r6.z, r3.x, l(1.000000)  // r6.z <- offset.y
+  mul r3.yz, r3.yyzy, l(0.000000, 0.500000, 0.500000, 0.000000)
+  add r3.yz, r3.yyzy, l(0.000000, 0.500000, 0.500000, 0.000000)
+  max r3.yz, r3.yyzy, l(0.000000, 0.000000, 0.000000, 0.000000)
+  min r6.xy, r3.yzyy, l(1.000000, 1.000000, 0.000000, 0.000000)  // r6.x <- offset.x; r6.y <- offset.y
 
-#line 71
-  sample r3.x, r6.xzxx, T0[0].zxyw, S1[1]
-  mov r3.x, r3.x  // r3.x <- sampleDepth
+#line 70
+  mov r3.y, -r6.y
+  add r6.z, r3.y, l(1.000000)  // r6.z <- offset.y
 
 #line 72
-  mov r3.y, -r3.x
-  add r3.y, r1.z, r3.y
-  mov r3.w, -r3.y
-  max r3.y, r3.w, r3.y
-  div r3.y, r0.y, r3.y
-  mov r3.w, l(-0.000000)
-  add r4.w, r3.w, l(1.000000)
-  add r3.y, r3.w, r3.y
-  div r3.w, l(1.000000, 1.000000, 1.000000, 1.000000), r4.w
-  mul r3.y, r3.w, r3.y
-  max r3.y, r3.y, l(0.000000)
-  min r3.y, r3.y, l(1.000000)
-  mul r3.w, r3.y, l(-2.000000)
-  add r3.w, r3.w, l(3.000000)
-  mul r3.y, r3.y, r3.y
-  mul r3.y, r3.y, r3.w  // r3.y <- rangeCheck
+  sample r3.y, r6.xzxx, T0[0].xzyw, S1[1]
+  mov r3.y, r3.y  // r3.y <- sampleDepth
 
 #line 73
-  mov r3.w, -r0.z
-  add r3.z, r3.w, r3.z
-  ge r3.x, r3.z, r3.x
-  movc r3.x, r3.x, l(1.000000), l(0)
-  mul r3.x, r3.y, r3.x
-  add r1.w, r1.w, r3.x
+  mov r3.z, -r3.y
+  add r3.z, r1.z, r3.z
+  mov r4.w, -r3.z
+  max r3.z, r3.z, r4.w
+  div r3.z, r0.y, r3.z
+  mov r4.w, l(-0.000000)
+  add r5.w, r4.w, l(1.000000)
+  add r3.z, r3.z, r4.w
+  div r4.w, l(1.000000, 1.000000, 1.000000, 1.000000), r5.w
+  mul r3.z, r3.z, r4.w
+  max r3.z, r3.z, l(0.000000)
+  min r3.z, r3.z, l(1.000000)
+  mul r4.w, r3.z, l(-2.000000)
+  add r4.w, r4.w, l(3.000000)
+  mul r3.z, r3.z, r3.z
+  mul r3.z, r3.z, r4.w  // r3.z <- rangeCheck
 
 #line 74
-  iadd r2.w, r2.w, l(1)
-endloop 
+  mov r4.w, -r0.z
+  add r3.w, r3.w, r4.w
+  ge r3.y, r3.w, r3.y
+  movc r3.y, r3.y, l(1.000000), l(0)
+  mul r3.y, r3.z, r3.y
+  add r2.w, r2.w, r3.y
 
 #line 75
-div r0.x, r1.w, l(64.000000)
+  iadd r3.x, r3.x, l(1)
+endloop 
+
+#line 76
+div r0.x, r2.w, l(128.000000)
 mov r0.x, -r0.x
 add r0.x, r0.x, l(1.000000)  // r0.x <- occlusion
 
-#line 76
-mov o0.x, r0.x
+#line 77
+log r0.x, r0.x
+mul r0.x, r0.x, r0.w
+exp o0.x, r0.x
 ret 
-// Approximately 88 instruction slots used
+// Approximately 93 instruction slots used

@@ -571,7 +571,7 @@ void D3DAppHelloWorld::UpdateMainPassCB()
     mMainPassCB.TotalTime = 0.0f;
     mMainPassCB.DeltaTime = 0.0f;
     mMainPassCB.AmbientLight = { 0.05f, 0.05f, 0.05f, 1.0f };
-    mMainPassCB.Lights[0].Strength = { 1.0f, 1.0f, 1.0f };
+    //mMainPassCB.Lights[0].Strength = { 0.5f, 0.5f, 0.5f };
 
     auto currPassCB = mCurrentFrameResource->PassCB.get();
     currPassCB->CopyData(0, mMainPassCB);
@@ -632,6 +632,8 @@ void D3DAppHelloWorld::Render()
     static float reflective = mMaterials["sphere"]->FresnelR0.x;
     static float roughness = mMaterials["sphere"]->Roughness;
     static float roughnessFloor = mMaterials["floor"]->Roughness;
+    static bool ssaoEnabled = true;
+    static float lightStrength = 1.0f;
     // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
     {
         ImGui::Begin("Test");                          // Create a window called "Hello, world!" and append into it.
@@ -656,6 +658,16 @@ void D3DAppHelloWorld::Render()
         {
             mMaterials["floor"]->Roughness = roughnessFloor;
             mMaterials["floor"]->NumFramesDirty = 3;
+        }
+
+        if (ImGui::Checkbox("SSAO", &ssaoEnabled))
+        {
+            mMainPassCB.Lights[0].FalloffStart = ssaoEnabled ? 1.0f : 0.0f;
+        }
+
+        if (ImGui::SliderFloat("Light Strength", &lightStrength, 0.0f, 1.0f))
+        {
+            mMainPassCB.Lights[0].Strength = DirectX::XMFLOAT3(lightStrength, lightStrength, lightStrength);
         }
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);

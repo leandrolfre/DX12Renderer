@@ -75,8 +75,14 @@ float4 PS(VertexOut pin) : SV_Target
 	float shadowFactor = CalcShadowFactor(shadowPosH);
 	float3 viewDir = normalize(-position.xyz);
 	float ao = gSSAOMap.Sample(gLinearSample, pin.TexCoord).r;
-	float4 ambient = /*0.1f **/ albedo * ao;
+	float4 ambient = /*0.1f **/ 0.3 * albedo;
+
+	if (gLights[0].FalloffStart)
+	{
+		ambient *= ao;
+	}
 	
+	return float4(ao,ao,ao, 1.0);
 	float4 directLight = ComputeLighting(gLights, albedo, fresnelShininess.rgb, fresnelShininess.a, position.xyz, normal.xyz, viewDir, shadowFactor);
 	
 	float4 litColor = (ambient + directLight);
