@@ -81,8 +81,7 @@ float4 PS(VertexOut pin) : SV_Target
 	{
 		ambient *= ao;
 	}
-	
-	return float4(ao,ao,ao, 1.0);
+
 	float4 directLight = ComputeLighting(gLights, albedo, fresnelShininess.rgb, fresnelShininess.a, position.xyz, normal.xyz, viewDir, shadowFactor);
 	
 	float4 litColor = (ambient + directLight);

@@ -47,8 +47,8 @@ VertexOut VS(VertexIn vin, float4 Color : COLOR)
 float2 noiseScale = float2(1920.0f / 4.0f, 1080.0f / 4.0f);
 float PS(VertexOut pin) : SV_Target
 {
-	
-	float3 randomVec = gNoise.Sample(gLinearSample, pin.TexCoord * noiseScale).xyz * 2.0f - 1.0f;
+
+	float3 randomVec = gNoise.Sample(gLinearSample, pin.TexCoord * noiseScale).xyz;
 	float3 position = GBufferPosition.Sample(gPointSample, pin.TexCoord).xyz;
 	float3 normal = normalize(GBufferNormal.Sample(gPointSample, pin.TexCoord).xyz);
 	float3 tangent = normalize(randomVec - dot(randomVec, normal) * normal);
@@ -56,8 +56,8 @@ float PS(VertexOut pin) : SV_Target
 	float3x3 tbn = {tangent, bitangent, normal};
 	
 	float occlusion = 0.0f;
-	float radius = 0.2f;
-	float bias = 0.01f;
+	float radius = 0.3f;
+	float bias = 0.05f;
 	float power = 5.5f;
 	for (int i = 0; i < 128; ++i)
 	{

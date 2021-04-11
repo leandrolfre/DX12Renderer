@@ -39,8 +39,7 @@ public:
     float Radius;
     float Bias;
 private:
-    /*DirectX::PackedVector::XMHALF4 mSSAONoise[16];*/
-    DirectX::XMFLOAT4 mSSAONoise[16];
+    DirectX::PackedVector::XMHALF4 mSSAONoise[16];
     UINT32 mWidth;
     UINT32 mHeight;
     std::unique_ptr<RenderTarget> mSSAOMap;

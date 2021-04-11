@@ -188,7 +188,7 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
     psoBlurDesc.SampleDesc.Quality = 0;
     psoBlurDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
-    ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mBlurPso)));
+    ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoBlurDesc, IID_PPV_ARGS(&mBlurPso)));
 
     //create CBV with random Samples over the hemisphere
     std::uniform_real_distribution<float> randomFloats(0.0f, 1.0f);
@@ -231,21 +231,14 @@ void SSAO::init(UINT Width, UINT Height, const DirectX::XMFLOAT4X4& Projection)
     //create SRV noise texture
     for (int i = 0; i < 16; ++i)
     {
-        /*mSSAONoise[i] = DirectX::PackedVector::XMHALF4(
+        mSSAONoise[i] = DirectX::PackedVector::XMHALF4(
             randomFloats(generator) * 2.0f - 1.0f,
             randomFloats(generator) * 2.0f - 1.0f,
-            0.0f,
-            0.0f);*/
-
-        mSSAONoise[i] = DirectX::XMFLOAT4(
-            randomFloats(generator) * 2.0f - 1.0f,
-            randomFloats(generator) * 2.0f - 1.0f,
-            0.0f,
+            randomFloats(generator),
             0.0f);
     }
 
-    //Texture* NoiseTexture = TextureManager::Get().CreateTexture(L"NoiseTexture", 4, 4, DXGI_FORMAT_R16G16B16A16_FLOAT, &mSSAONoise, 64);
-    Texture* NoiseTexture = TextureManager::Get().CreateTexture(L"NoiseTexture", 4, 4, DXGI_FORMAT_R32G32B32A32_FLOAT, &mSSAONoise, 128);
+    Texture* NoiseTexture = TextureManager::Get().CreateTexture(L"NoiseTexture", 4, 4, DXGI_FORMAT_R16G16B16A16_FLOAT, &mSSAONoise, 64);
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     ZeroMemory(&srvDesc, sizeof(D3D12_SHADER_RESOURCE_VIEW_DESC));
 
